@@ -20,6 +20,7 @@ class TwilioRoomManager {
         this.onTrackUnsubscribed = options.onTrackUnsubscribed || (() => {});
         this.onDataMessage = options.onDataMessage || (() => {});
         this.onScreenShareEnded = options.onScreenShareEnded || (() => {});
+        this.onDominantSpeakerChanged = options.onDominantSpeakerChanged || (() => {});
         this.onError = options.onError || (() => {});
         this.onDisconnected = options.onDisconnected || (() => {});
     }
@@ -90,6 +91,13 @@ class TwilioRoomManager {
             this.room.on('participantDisconnected', participant => {
                 console.log(`Participant disconnected: ${participant.identity}`);
                 this.handleParticipantDisconnected(participant);
+            });
+
+            // Listen for dominant speaker changes
+            this.room.on('dominantSpeakerChanged', participant => {
+                if (this.onDominantSpeakerChanged) {
+                    this.onDominantSpeakerChanged(participant);
+                }
             });
 
             // Handle room disconnection (e.g. kicked or network dropped)

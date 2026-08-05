@@ -1055,6 +1055,98 @@ body {
 }
 
 /* ==========================================================================
+   Phase 2: Speaker View & Host Moderation Controls
+   ========================================================================== */
+
+/* Host Badge */
+.badge-host {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.4rem;
+    background: rgba(245, 158, 11, 0.25);
+    border: 1px solid var(--warning-color);
+    border-radius: 4px;
+    color: #fbbf24;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.btn-danger-soft {
+    background: rgba(239, 68, 68, 0.15);
+    color: #fca5a5;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.btn-danger-soft:hover {
+    background: var(--danger-color);
+    color: white;
+}
+
+/* Host Tile Actions */
+.host-tile-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-left: 0.4rem;
+}
+
+.host-action-btn {
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid var(--panel-border);
+    color: var(--text-muted);
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.host-action-btn:hover {
+    color: white;
+    background: var(--danger-color);
+    border-color: var(--danger-color);
+}
+
+/* Dominant Active Speaker Glowing Border */
+.participant-tile.dominant-speaker {
+    border-color: var(--primary-color) !important;
+    box-shadow: 0 0 20px var(--primary-glow) !important;
+}
+
+/* Speaker Mode Grid Layout */
+.video-grid.speaker-mode {
+    display: grid;
+    grid-template-columns: 3fr 1fr;
+    grid-template-rows: 1fr;
+    gap: 1rem;
+}
+
+.video-grid.speaker-mode .spotlight-tile {
+    grid-column: 1 / 2;
+    grid-row: 1 / 2;
+    height: 100%;
+}
+
+.video-grid.speaker-mode .thumbnails-sidebar {
+    grid-column: 2 / 3;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    overflow-y: auto;
+    max-height: 100%;
+}
+
+.video-grid.speaker-mode .thumbnails-sidebar .participant-tile {
+    height: 160px;
+    min-height: 160px;
+}
+
+/* ==========================================================================
    Responsive Breakpoints
    ========================================================================== */
 @media (max-width: 768px) {

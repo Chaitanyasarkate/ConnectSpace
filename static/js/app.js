@@ -39,6 +39,11 @@ document.addEventListener('DOMContentLoaded', () => {
         localUserName: document.getElementById('local-user-name'),
         localAudioIndicator: document.getElementById('local-audio-indicator'),
 
+        // Call Metrics & View Header
+        toggleViewBtn: document.getElementById('toggle-view-btn'),
+        viewModeLabel: document.getElementById('view-mode-label'),
+        muteAllBtn: document.getElementById('mute-all-btn'),
+
         // Control Bar
         toggleMicBtn: document.getElementById('toggle-mic-btn'),
         toggleCamBtn: document.getElementById('toggle-cam-btn'),
@@ -75,6 +80,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let unreadCount = 0;
     let currentUsername = '';
 
+    // Phase 2 State
+    let isHost = false;
+    let isSpeakerView = false;
+    let currentSpotlightSid = null;
+
     // Check Backend Health & Twilio Config Status on Load
     checkBackendHealth();
 
@@ -101,6 +111,10 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.chatForm.addEventListener('submit', handleSendChatMessage);
     elements.handRaiseBtn.addEventListener('click', handleToggleHandRaise);
     elements.reactionsBtn.addEventListener('click', toggleReactionsPicker);
+
+    // Phase 2 Listeners
+    elements.toggleViewBtn.addEventListener('click', toggleSpeakerView);
+    elements.muteAllBtn.addEventListener('click', handleHostMuteAll);
     
     // Reaction Emoji Buttons
     document.querySelectorAll('.reaction-emoji-btn').forEach(btn => {
@@ -219,6 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 onTrackUnsubscribed: handleRemoteTrackUnsubscribed,
                 onDataMessage: handleIncomingDataMessage,
                 onScreenShareEnded: handleScreenShareEnded,
+                onDominantSpeakerChanged: handleDominantSpeakerChanged,
                 onDisconnected: handleRoomDisconnected
             });
 
@@ -228,6 +243,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // 2. Connect to Twilio Room
             const room = await roomManager.connectRoom(tokenData.token, roomName);
 
+            // Host determination: First participant in room becomes Host
+            isHost = (room.participants.size === 0);
+
             // 3. Setup Local Participant UI
             setupLocalUserUI(username, room.localParticipant);
 
@@ -235,12 +253,18 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.lobbyContainer.classList.add('hidden');
             elements.roomContainer.classList.remove('hidden');
             elements.currentRoomName.textContent = roomName;
+
+            if (isHost) {
+                elements.muteAllBtn.classList.remove('hidden');
+            } else {
+                elements.muteAllBtn.classList.add('hidden');
+            }
             
             updateConnectionStatus(true, `Connected to ${roomName}`);
             startCallTimer();
             updateParticipantCount();
 
-            showToast(`Joined room "${roomName}" successfully!`, 'success');
+            showToast(isHost ? `Joined room "${roomName}" as HOST 👑` : `Joined room "${roomName}"`, 'success');
 
         } catch (err) {
             console.error('Failed to join room:', err);
@@ -265,6 +289,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 publication.track.attach(elements.localVideo);
             }
         });
+
+        // Append Host Badge if local user is host
+        if (isHost) {
+            const identityContainer = elements.localParticipantTile.querySelector('.user-identity');
+            if (identityContainer && !identityContainer.querySelector('.badge-host')) {
+                const hostBadge = document.createElement('span');
+                hostBadge.className = 'badge-host';
+                hostBadge.innerHTML = '<i class="fa-solid fa-crown"></i> HOST';
+                identityContainer.appendChild(hostBadge);
+            }
+        }
 
         // Apply initial mic/cam preview choices if needed
         if (!isPreviewMicOn) {
@@ -291,6 +326,17 @@ document.addEventListener('DOMContentLoaded', () => {
         tile.id = `tile-${participant.sid}`;
         tile.className = 'participant-tile';
 
+        const hostActionsHTML = isHost ? `
+            <div class="host-tile-actions">
+                <button type="button" class="host-action-btn host-mute-btn" data-sid="${participant.sid}" title="Mute Participant">
+                    <i class="fa-solid fa-microphone-slash"></i>
+                </button>
+                <button type="button" class="host-action-btn host-kick-btn" data-sid="${participant.sid}" data-name="${escapeHtml(participant.identity)}" title="Kick Participant">
+                    <i class="fa-solid fa-user-xmark"></i>
+                </button>
+            </div>
+        ` : '';
+
         tile.innerHTML = `
             <div class="video-wrapper" id="wrapper-${participant.sid}">
                 <div id="fallback-${participant.sid}" class="avatar-fallback">
@@ -299,7 +345,8 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <div class="tile-bar">
                 <div class="user-identity">
-                    <span>${participant.identity}</span>
+                    <span>${escapeHtml(participant.identity)}</span>
+                    ${hostActionsHTML}
                 </div>
                 <div class="media-indicators">
                     <span id="mic-indicator-${participant.sid}" class="indicator mic-on">
@@ -311,6 +358,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         elements.videoGrid.appendChild(tile);
         activeParticipants.set(participant.sid, tile);
+
+        // Bind Host Action Buttons if present
+        if (isHost) {
+            const muteBtn = tile.querySelector('.host-mute-btn');
+            const kickBtn = tile.querySelector('.host-kick-btn');
+            if (muteBtn) muteBtn.addEventListener('click', () => handleHostMuteUser(participant.sid, participant.identity));
+            if (kickBtn) kickBtn.addEventListener('click', () => handleHostKickUser(participant.sid, participant.identity));
+        }
+
         updateParticipantCount();
         updateGridLayout();
     }
@@ -461,18 +517,64 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * Dynamic Grid Layout CSS Selector Update
+     * Dynamic Grid Layout CSS Selector Update (Grid View vs Speaker View)
      */
     function updateGridLayout() {
         const count = activeParticipants.size + 1; // Remote + Local
         elements.videoGrid.className = 'video-grid';
 
-        if (count === 1) elements.videoGrid.classList.add('grid-1');
-        else if (count === 2) elements.videoGrid.classList.add('grid-2');
-        else if (count <= 4) elements.videoGrid.classList.add('grid-4');
-        else if (count <= 6) elements.videoGrid.classList.add('grid-6');
-        else if (count <= 9) elements.videoGrid.classList.add('grid-9');
-        else elements.videoGrid.classList.add('grid-many');
+        if (isSpeakerView) {
+            elements.videoGrid.classList.add('speaker-mode');
+            
+            // Clean up sidebar if present
+            let sidebar = elements.videoGrid.querySelector('.thumbnails-sidebar');
+            if (!sidebar) {
+                sidebar = document.createElement('div');
+                sidebar.className = 'thumbnails-sidebar';
+                elements.videoGrid.appendChild(sidebar);
+            }
+
+            // Determine spotlight tile
+            let spotlightTile = null;
+            if (currentSpotlightSid && document.getElementById(`tile-${currentSpotlightSid}`)) {
+                spotlightTile = document.getElementById(`tile-${currentSpotlightSid}`);
+            } else if (activeParticipants.size > 0) {
+                spotlightTile = activeParticipants.values().next().value;
+            } else {
+                spotlightTile = elements.localParticipantTile;
+            }
+
+            // Move spotlight tile to main area and rest to sidebar
+            const allTiles = [elements.localParticipantTile, ...Array.from(activeParticipants.values())];
+            allTiles.forEach(tile => {
+                tile.classList.remove('spotlight-tile');
+                if (tile === spotlightTile) {
+                    tile.classList.add('spotlight-tile');
+                    elements.videoGrid.appendChild(tile);
+                } else {
+                    sidebar.appendChild(tile);
+                }
+            });
+
+        } else {
+            // Restore Grid Mode
+            const sidebar = elements.videoGrid.querySelector('.thumbnails-sidebar');
+            if (sidebar) {
+                const childTiles = Array.from(sidebar.children);
+                childTiles.forEach(tile => elements.videoGrid.appendChild(tile));
+                sidebar.remove();
+            }
+
+            const allTiles = [elements.localParticipantTile, ...Array.from(activeParticipants.values())];
+            allTiles.forEach(tile => tile.classList.remove('spotlight-tile'));
+
+            if (count === 1) elements.videoGrid.classList.add('grid-1');
+            else if (count === 2) elements.videoGrid.classList.add('grid-2');
+            else if (count <= 4) elements.videoGrid.classList.add('grid-4');
+            else if (count <= 6) elements.videoGrid.classList.add('grid-6');
+            else if (count <= 9) elements.videoGrid.classList.add('grid-9');
+            else elements.videoGrid.classList.add('grid-many');
+        }
     }
 
     /**
@@ -685,6 +787,7 @@ document.addEventListener('DOMContentLoaded', () => {
      */
     function handleIncomingDataMessage(payload, participant) {
         const senderName = payload.sender || participant.identity;
+        const mySid = roomManager && roomManager.room && roomManager.room.localParticipant ? roomManager.room.localParticipant.sid : null;
 
         if (payload.type === 'chat') {
             appendChatMessage(payload.text, senderName, payload.time || 'Now', false);
@@ -704,7 +807,96 @@ document.addEventListener('DOMContentLoaded', () => {
             if (payload.raised) {
                 showToast(`✋ ${senderName} raised their hand!`, 'info', 4000);
             }
+        } else if (payload.type === 'host_mute_user') {
+            if (payload.targetSid === mySid) {
+                if (!roomManager.isAudioMuted) {
+                    roomManager.toggleAudio();
+                    updateMicButtonUI(true);
+                    showToast('🔇 The host muted your microphone.', 'error', 5000);
+                }
+            }
+        } else if (payload.type === 'host_mute_all') {
+            if (!isHost && !roomManager.isAudioMuted) {
+                roomManager.toggleAudio();
+                updateMicButtonUI(true);
+                showToast('🔇 The host muted all participants.', 'error', 5000);
+            }
+        } else if (payload.type === 'host_kick_user') {
+            if (payload.targetSid === mySid) {
+                showToast('🚪 You were removed from the room by the host.', 'error', 6000);
+                setTimeout(() => {
+                    handleLeaveRoom();
+                }, 1000);
+            }
         }
+    }
+
+    /**
+     * Phase 2: Toggle Speaker View vs Grid View
+     */
+    function toggleSpeakerView() {
+        isSpeakerView = !isSpeakerView;
+        elements.toggleViewBtn.classList.toggle('btn-primary', isSpeakerView);
+        elements.viewModeLabel.textContent = isSpeakerView ? 'Grid View' : 'Speaker View';
+        elements.toggleViewBtn.querySelector('i').className = isSpeakerView ? 'fa-solid fa-user-large' : 'fa-solid fa-border-all';
+        updateGridLayout();
+    }
+
+    /**
+     * Phase 2: Handle Dominant Speaker Changes
+     */
+    function handleDominantSpeakerChanged(participant) {
+        // Remove active class from all tiles
+        document.querySelectorAll('.participant-tile').forEach(tile => tile.classList.remove('dominant-speaker'));
+
+        if (!participant) return;
+
+        const speakerTile = document.getElementById(`tile-${participant.sid}`);
+        if (speakerTile) {
+            speakerTile.classList.add('dominant-speaker');
+            currentSpotlightSid = participant.sid;
+            if (isSpeakerView) {
+                updateGridLayout();
+            }
+        }
+    }
+
+    /**
+     * Phase 2 Host Moderation: Mute Remote User
+     */
+    function handleHostMuteUser(targetSid, targetName) {
+        if (!isHost || !roomManager) return;
+        roomManager.sendDataMessage({
+            type: 'host_mute_user',
+            targetSid: targetSid
+        });
+        showToast(`Sent mute request to ${targetName}.`, 'info', 2000);
+    }
+
+    /**
+     * Phase 2 Host Moderation: Kick Remote User
+     */
+    function handleHostKickUser(targetSid, targetName) {
+        if (!isHost || !roomManager) return;
+        if (confirm(`Are you sure you want to remove ${targetName} from the room?`)) {
+            roomManager.sendDataMessage({
+                type: 'host_kick_user',
+                targetSid: targetSid,
+                targetName: targetName
+            });
+            showToast(`Removed ${targetName} from the room.`, 'info', 3000);
+        }
+    }
+
+    /**
+     * Phase 2 Host Moderation: Mute All Participants
+     */
+    function handleHostMuteAll() {
+        if (!isHost || !roomManager) return;
+        roomManager.sendDataMessage({
+            type: 'host_mute_all'
+        });
+        showToast('Muted all participants in the room.', 'info', 3000);
     }
 
     /**
