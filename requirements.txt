@@ -1,0 +1,27 @@
+# VisionMeet - Production Dependencies with Pinned Exact Versions
+
+# Core Web Framework
+Flask==3.0.3
+Werkzeug==3.0.2
+Jinja2==3.1.3
+itsdangerous==2.2.0
+click==8.1.7
+blinker==1.7.0
+
+# Twilio SDK & JWT Auth
+twilio==9.0.5
+PyJWT==2.8.0
+
+# HTTP & Environment Management
+requests==2.31.0
+python-dotenv==1.0.1
+urllib3==2.2.1
+certifi==2024.2.2
+charset-normalizer==3.3.2
+idna==3.7
+
+# Cross-Origin Resource Sharing
+Flask-CORS==4.0.1
+
+# Production WSGI Server
+gunicorn==21.2.0

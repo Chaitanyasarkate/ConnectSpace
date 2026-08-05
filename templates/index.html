@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ConnectSpace - Video Chat</title>
+    <meta name="description" content="Production-ready real-time video chat application built with Flask and Twilio Programmable Video SDK.">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+    <!-- Application Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="app-background"></div>
+
+    <!-- Application Top Header / Navbar -->
+    <header class="navbar">
+        <div class="nav-brand">
+            <i class="fa-solid fa-video brand-icon"></i>
+            <span class="brand-name">Connect<span class="brand-highlight">Space</span></span>
+        </div>
+        <div id="connection-status-badge" class="status-badge disconnected">
+            <span class="status-dot"></span>
+            <span id="status-text">Disconnected</span>
+        </div>
+    </header>
+
+    <!-- Global Toast Notification Banner -->
+    <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+    <!-- Main Container -->
+    <main class="main-content">
+        
+        <!-- SECTION 1: LOBBY VIEW -->
+        <section id="lobby-container" class="lobby-card glass-panel">
+            <div class="lobby-header">
+                <h2>Join a Video Room</h2>
+                <p>Enter your display name and room code to start streaming.</p>
+            </div>
+
+            <!-- Twilio Setup Alert Notice (dynamically shown if backend not configured) -->
+            <div id="twilio-warning" class="notice-box hidden">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <div class="notice-text">
+                    <strong>Twilio Credentials Missing</strong>
+                    <p>Please update <code>.env</code> with your Twilio Account SID and API Keys to start live video calls.</p>
+                </div>
+            </div>
+
+            <!-- Device Camera Preview -->
+            <div class="media-preview-box">
+                <div id="preview-video-container" class="preview-video-wrapper">
+                    <video id="local-preview-video" autoplay playsinline muted></video>
+                    <div id="preview-placeholder" class="preview-placeholder">
+                        <i class="fa-solid fa-camera-slash placeholder-icon"></i>
+                        <span>Camera preview disabled</span>
+                    </div>
+                </div>
+                
+                <div class="preview-controls">
+                    <button type="button" id="preview-mic-btn" class="icon-btn active" title="Toggle Microphone">
+                        <i class="fa-solid fa-microphone"></i>
+                    </button>
+                    <button type="button" id="preview-cam-btn" class="icon-btn active" title="Toggle Camera">
+                        <i class="fa-solid fa-video"></i>
+                    </button>
+                    <button type="button" id="request-perm-btn" class="btn btn-secondary btn-sm">
+                        <i class="fa-solid fa-shield-halved"></i> Test Devices
+                    </button>
+                </div>
+            </div>
+
+            <!-- Join Room Form -->
+            <form id="join-room-form" class="join-form">
+                <div class="form-group">
+                    <label for="username-input">Your Name</label>
+                    <div class="input-wrapper">
+                        <i class="fa-solid fa-user input-icon"></i>
+                        <input type="text" id="username-input" placeholder="e.g. Alex Johnson" required maxlength="30" autocomplete="off">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="room-input">Room Name</label>
+                    <div class="input-wrapper">
+                        <i class="fa-solid fa-door-open input-icon"></i>
+                        <input type="text" id="room-input" placeholder="e.g. Design-Sync" required maxlength="30" autocomplete="off">
+                    </div>
+                </div>
+
+                <button type="submit" id="join-btn" class="btn btn-primary btn-block btn-lg">
+                    <span class="btn-text">Join Room</span>
+                    <i class="fa-solid fa-arrow-right btn-icon"></i>
+                </button>
+            </form>
+        </section>
+
+        <!-- SECTION 2: ACTIVE CALL VIEW (Initially Hidden) -->
+        <section id="room-container" class="room-view hidden">
+            
+            <!-- Call Header Bar -->
+            <div class="room-header-bar glass-panel">
+                <div class="room-info">
+                    <span class="room-label">ROOM:</span>
+                    <h3 id="current-room-name" class="room-title">Design-Sync</h3>
+                </div>
+
+                <div class="call-metrics">
+                    <div class="metric-badge">
+                        <i class="fa-regular fa-clock"></i>
+                        <span id="call-timer">00:00</span>
+                    </div>
+                    
+                    <div class="metric-badge active-participants">
+                        <i class="fa-solid fa-users"></i>
+                        <span id="participant-count">1 Participant</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dynamic Video Grid -->
+            <div id="video-grid" class="video-grid grid-1">
+                <!-- Local Participant Tile (Always Present) -->
+                <div id="local-participant-tile" class="participant-tile local-user">
+                    <div class="video-wrapper" id="local-video-container">
+                        <video id="local-video" autoplay playsinline muted></video>
+                        <div id="local-video-fallback" class="avatar-fallback hidden">
+                            <div class="avatar-circle" id="local-avatar-initials">YOU</div>
+                        </div>
+                    </div>
+                    
+                    <div class="tile-bar">
+                        <div class="user-identity">
+                            <span id="local-user-name">You</span>
+                            <span class="badge-you">You</span>
+                        </div>
+                        <div class="media-indicators">
+                            <span id="local-audio-indicator" class="indicator mic-on">
+                                <i class="fa-solid fa-microphone"></i>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Remote participants will be dynamically inserted here -->
+            </div>
+
+            <!-- Floating Room Control Bar -->
+            <div id="control-bar" class="floating-control-bar glass-panel">
+                <button type="button" id="toggle-mic-btn" class="control-btn" title="Mute/Unmute Audio">
+                    <i class="fa-solid fa-microphone"></i>
+                    <span class="btn-label">Mic</span>
+                </button>
+
+                <button type="button" id="toggle-cam-btn" class="control-btn" title="Turn Camera On/Off">
+                    <i class="fa-solid fa-video"></i>
+                    <span class="btn-label">Camera</span>
+                </button>
+
+                <button type="button" id="copy-link-btn" class="control-btn btn-action" title="Share Room Code">
+                    <i class="fa-solid fa-share-nodes"></i>
+                    <span class="btn-label">Invite</span>
+                </button>
+
+                <button type="button" id="leave-btn" class="control-btn btn-danger" title="Leave Video Room">
+                    <i class="fa-solid fa-phone-slash"></i>
+                    <span class="btn-label">Leave</span>
+                </button>
+            </div>
+        </section>
+    </main>
+
+    <!-- Global Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="spinner-card glass-panel">
+            <div class="spinner"></div>
+            <p id="loading-message">Connecting to Twilio Room...</p>
+        </div>
+    </div>
+
+    <!-- Twilio Programmable Video SDK v2.28.1 CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/twilio-video@2.28.1/dist/twilio-video.min.js"></script>
+
+    <!-- Application JavaScript -->
+    <script src="{{ url_for('static', filename='js/twilio-room.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
