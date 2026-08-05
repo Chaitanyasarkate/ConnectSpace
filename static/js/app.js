@@ -152,28 +152,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    elements.toggleFullscreenBtn.addEventListener('click', handleToggleFullscreen);
+    // Fullscreen Listeners
+    elements.toggleFullscreenBtn.addEventListener('click', toggleAppFullscreen);
+    
+    // Bind Local Tile Fullscreen Button
+    const localFullscreenBtn = elements.localParticipantTile.querySelector('.tile-fullscreen-btn');
+    if (localFullscreenBtn) {
+        localFullscreenBtn.addEventListener('click', () => toggleTileFullscreen(elements.localParticipantTile));
+    }
 
-    // Double-click tile to toggle Fullscreen
-    document.addEventListener('dblclick', (e) => {
-        const tile = e.target.closest('.participant-tile');
-        if (tile) {
-            toggleElementFullscreen(tile);
-        }
-    });
-
-    // Delegated click for tile-fullscreen-btn
-    document.addEventListener('click', (e) => {
-        const fullBtn = e.target.closest('.tile-fullscreen-btn');
-        if (fullBtn) {
-            const tile = fullBtn.closest('.participant-tile');
-            if (tile) {
-                toggleElementFullscreen(tile);
-            }
-        }
-    });
-
-    // Listen for browser fullscreen change events
+    // Sync fullscreen button icon on native ESC key or change
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
 
@@ -404,18 +392,24 @@ document.addEventListener('DOMContentLoaded', () => {
                     ${hostActionsHTML}
                 </div>
                 <div class="media-indicators">
+                    <button type="button" class="icon-btn-sm tile-fullscreen-btn" title="Expand Fullscreen">
+                        <i class="fa-solid fa-expand"></i>
+                    </button>
                     <span id="mic-indicator-${participant.sid}" class="indicator mic-on">
                         <i class="fa-solid fa-microphone"></i>
                     </span>
-                    <button type="button" class="indicator tile-fullscreen-btn" title="Toggle Tile Fullscreen">
-                        <i class="fa-solid fa-expand"></i>
-                    </button>
                 </div>
             </div>
         `;
 
         elements.videoGrid.appendChild(tile);
         activeParticipants.set(participant.sid, tile);
+
+        // Bind Fullscreen Button
+        const fsBtn = tile.querySelector('.tile-fullscreen-btn');
+        if (fsBtn) {
+            fsBtn.addEventListener('click', () => toggleTileFullscreen(tile));
+        }
 
         // Bind Host Action Buttons if present
         if (isHost) {
@@ -1094,6 +1088,69 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
+     * Fullscreen Mode Handler for Entire App / Meeting View
+     */
+    function toggleAppFullscreen() {
+        const fsElement = document.fullscreenElement || document.webkitFullscreenElement;
+        const targetContainer = elements.roomContainer || document.documentElement;
+
+        if (!fsElement) {
+            if (targetContainer.requestFullscreen) {
+                targetContainer.requestFullscreen();
+            } else if (targetContainer.webkitRequestFullscreen) {
+                targetContainer.webkitRequestFullscreen();
+            }
+            showToast('Entered Fullscreen Mode', 'info', 2000);
+        } else {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            }
+        }
+    }
+
+    /**
+     * Fullscreen Mode Handler for Individual Participant Video Tile
+     */
+    function toggleTileFullscreen(tileElement) {
+        if (!tileElement) return;
+        const fsElement = document.fullscreenElement || document.webkitFullscreenElement;
+
+        if (!fsElement) {
+            if (tileElement.requestFullscreen) {
+                tileElement.requestFullscreen();
+            } else if (tileElement.webkitRequestFullscreen) {
+                tileElement.webkitRequestFullscreen();
+            }
+        } else {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            }
+        }
+    }
+
+    /**
+     * Sync Fullscreen Icons when entering or exiting Fullscreen mode
+     */
+    function handleFullscreenChange() {
+        const fsElement = document.fullscreenElement || document.webkitFullscreenElement;
+        const isFS = Boolean(fsElement);
+
+        if (elements.toggleFullscreenBtn) {
+            elements.toggleFullscreenBtn.classList.toggle('active', isFS);
+            elements.toggleFullscreenBtn.querySelector('i').className = isFS ? 'fa-solid fa-compress' : 'fa-solid fa-expand';
+            elements.toggleFullscreenBtn.querySelector('.btn-label').textContent = isFS ? 'Exit Full' : 'Full Screen';
+        }
+
+        document.querySelectorAll('.tile-fullscreen-btn i').forEach(icon => {
+            icon.className = isFS ? 'fa-solid fa-compress' : 'fa-solid fa-expand';
+        });
+    }
+
+    /**
      * Animate Floating Emoji Over Participant Video Tile (Screen position calculation)
      */
     function showFloatingEmoji(emoji, tileElement) {
@@ -1136,52 +1193,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } else if (badge) {
             badge.remove();
-        }
-    }
-
-    /**
-     * Handle Global Room Fullscreen Toggle
-     */
-    function handleToggleFullscreen() {
-        toggleElementFullscreen(elements.roomContainer);
-    }
-
-    /**
-     * Toggle HTML5 Fullscreen for any target element (Room Container or Video Tile)
-     */
-    function toggleElementFullscreen(targetEl) {
-        if (!targetEl) return;
-
-        const fsElement = document.fullscreenElement || document.webkitFullscreenElement;
-
-        if (!fsElement) {
-            if (targetEl.requestFullscreen) {
-                targetEl.requestFullscreen().catch(err => console.warn('Fullscreen denied:', err));
-            } else if (targetEl.webkitRequestFullscreen) {
-                targetEl.webkitRequestFullscreen();
-            }
-        } else {
-            if (document.exitFullscreen) {
-                document.exitFullscreen();
-            } else if (document.webkitExitFullscreen) {
-                document.webkitExitFullscreen();
-            }
-        }
-    }
-
-    /**
-     * Listen for Fullscreen State Change to Update Control Button Icons
-     */
-    function handleFullscreenChange() {
-        const fsElement = document.fullscreenElement || document.webkitFullscreenElement;
-        const icon = elements.toggleFullscreenBtn.querySelector('i');
-
-        if (fsElement) {
-            elements.toggleFullscreenBtn.classList.add('btn-primary');
-            if (icon) icon.className = 'fa-solid fa-compress';
-        } else {
-            elements.toggleFullscreenBtn.classList.remove('btn-primary');
-            if (icon) icon.className = 'fa-solid fa-expand';
         }
     }
 
