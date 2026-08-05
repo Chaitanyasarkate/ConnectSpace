@@ -53,8 +53,15 @@ document.addEventListener('DOMContentLoaded', () => {
         handRaiseBtn: document.getElementById('hand-raise-btn'),
         reactionsBtn: document.getElementById('reactions-btn'),
         reactionsPicker: document.getElementById('reactions-picker'),
+        toggleCaptionsBtn: document.getElementById('toggle-captions-btn'),
+        toggleBlurBtn: document.getElementById('toggle-blur-btn'),
         copyLinkBtn: document.getElementById('copy-link-btn'),
         leaveBtn: document.getElementById('leave-btn'),
+
+        // Closed Captions Overlay Banner
+        captionOverlay: document.getElementById('caption-overlay'),
+        captionSpeaker: document.getElementById('caption-speaker'),
+        captionText: document.getElementById('caption-text'),
 
         // In-Call Chat Drawer
         chatPanel: document.getElementById('chat-panel'),
@@ -84,6 +91,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let isHost = false;
     let isSpeakerView = false;
     let currentSpotlightSid = null;
+
+    // Phase 3 State
+    let isCaptionsOn = false;
+    let isBackgroundBlurred = false;
+    let speechRecognizer = null;
+    let captionHideTimeout = null;
 
     // Check Backend Health & Twilio Config Status on Load
     checkBackendHealth();
@@ -115,6 +128,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Phase 2 Listeners
     elements.toggleViewBtn.addEventListener('click', toggleSpeakerView);
     elements.muteAllBtn.addEventListener('click', handleHostMuteAll);
+
+    // Phase 3 Listeners
+    elements.toggleCaptionsBtn.addEventListener('click', toggleCaptions);
+    elements.toggleBlurBtn.addEventListener('click', toggleBackgroundBlur);
     
     // Reaction Emoji Buttons
     document.querySelectorAll('.reaction-emoji-btn').forEach(btn => {
@@ -509,6 +526,17 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.localVideo.srcObject = null;
         elements.localVideoFallback.classList.add('hidden');
         
+        // Reset Phase 3 state
+        stopSpeechRecognition();
+        isCaptionsOn = false;
+        elements.toggleCaptionsBtn.classList.remove('active');
+        elements.captionOverlay.classList.add('hidden');
+        
+        isBackgroundBlurred = false;
+        elements.toggleBlurBtn.classList.remove('active');
+        elements.localVideo.classList.remove('video-blurred');
+        elements.localPreviewVideo.classList.remove('video-blurred');
+
         // Reset control bar buttons
         updateMicButtonUI(false);
         updateCamButtonUI(false);
@@ -807,6 +835,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (payload.raised) {
                 showToast(`✋ ${senderName} raised their hand!`, 'info', 4000);
             }
+        } else if (payload.type === 'caption') {
+            displayLiveCaption(senderName, payload.text);
         } else if (payload.type === 'host_mute_user') {
             if (payload.targetSid === mySid) {
                 if (!roomManager.isAudioMuted) {
@@ -829,6 +859,128 @@ document.addEventListener('DOMContentLoaded', () => {
                 }, 1000);
             }
         }
+    }
+
+    /**
+     * Phase 3: Toggle AI Live Subtitles & Closed Captions
+     */
+    function toggleCaptions() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+        if (!SpeechRecognition) {
+            showToast('Live captions not supported on this browser (supported on Chrome/Edge/Safari).', 'error', 5000);
+            return;
+        }
+
+        isCaptionsOn = !isCaptionsOn;
+        elements.toggleCaptionsBtn.classList.toggle('active', isCaptionsOn);
+
+        if (isCaptionsOn) {
+            startSpeechRecognition();
+            showToast('AI Live Closed Captions ON', 'success');
+        } else {
+            stopSpeechRecognition();
+            elements.captionOverlay.classList.add('hidden');
+            showToast('Closed Captions OFF', 'info');
+        }
+    }
+
+    /**
+     * Start Web Speech API Recognition Engine
+     */
+    function startSpeechRecognition() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) return;
+
+        speechRecognizer = new SpeechRecognition();
+        speechRecognizer.continuous = true;
+        speechRecognizer.interimResults = true;
+        speechRecognizer.lang = 'en-US';
+
+        speechRecognizer.onresult = (event) => {
+            let interimTranscript = '';
+            let finalTranscript = '';
+
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                const transcript = event.results[i][0].transcript;
+                if (event.results[i].isFinal) {
+                    finalTranscript += transcript;
+                } else {
+                    interimTranscript += transcript;
+                }
+            }
+
+            const currentText = finalTranscript || interimTranscript;
+            if (currentText.trim()) {
+                // Render locally
+                displayLiveCaption(currentUsername || 'You', currentText);
+
+                // Broadcast transcript to room via WebRTC DataTrack
+                if (roomManager) {
+                    roomManager.sendDataMessage({
+                        type: 'caption',
+                        text: currentText,
+                        sender: currentUsername
+                    });
+                }
+            }
+        };
+
+        speechRecognizer.onerror = (err) => {
+            console.warn('Speech recognition error:', err);
+        };
+
+        speechRecognizer.onend = () => {
+            // Auto restart if captions remain enabled
+            if (isCaptionsOn) {
+                try { speechRecognizer.start(); } catch (e) {}
+            }
+        };
+
+        try {
+            speechRecognizer.start();
+        } catch (e) {
+            console.warn('Speech recognition start failed:', e);
+        }
+    }
+
+    /**
+     * Stop Web Speech API Recognition Engine
+     */
+    function stopSpeechRecognition() {
+        if (speechRecognizer) {
+            try {
+                speechRecognizer.stop();
+            } catch (e) {}
+            speechRecognizer = null;
+        }
+    }
+
+    /**
+     * Render Live Caption Overlay Banner
+     */
+    function displayLiveCaption(speakerName, text) {
+        elements.captionSpeaker.textContent = `${speakerName}:`;
+        elements.captionText.textContent = text;
+        elements.captionOverlay.classList.remove('hidden');
+
+        if (captionHideTimeout) clearTimeout(captionHideTimeout);
+        captionHideTimeout = setTimeout(() => {
+            elements.captionOverlay.classList.add('hidden');
+        }, 4000);
+    }
+
+    /**
+     * Phase 3: Toggle Camera Background Blur
+     */
+    function toggleBackgroundBlur() {
+        isBackgroundBlurred = !isBackgroundBlurred;
+        elements.toggleBlurBtn.classList.toggle('active', isBackgroundBlurred);
+
+        elements.localVideo.classList.toggle('video-blurred', isBackgroundBlurred);
+        elements.localPreviewVideo.classList.toggle('video-blurred', isBackgroundBlurred);
+
+        showToast(isBackgroundBlurred ? 'AI Background Blur ON ✨' : 'Background Blur OFF', 'info');
     }
 
     /**

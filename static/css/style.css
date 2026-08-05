@@ -1147,6 +1147,50 @@ body {
 }
 
 /* ==========================================================================
+   Phase 3: AI Live Subtitles & AI Background Blur
+   ========================================================================== */
+
+/* AI Live Caption Banner Overlay */
+.caption-overlay {
+    position: absolute;
+    bottom: 90px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(9, 13, 22, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(12px);
+    border-radius: 9999px;
+    padding: 0.6rem 1.4rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    max-width: 80%;
+    z-index: 100;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+    animation: fadeIn 0.3s ease-out;
+}
+
+.caption-speaker {
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: #fbbf24;
+    white-space: nowrap;
+}
+
+.caption-text {
+    font-size: 0.9rem;
+    color: var(--text-main);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Camera Background Blur Filter */
+.video-wrapper video.video-blurred {
+    filter: blur(16px) brightness(1.05) contrast(1.05);
+}
+
+/* ==========================================================================
    Responsive Breakpoints
    ========================================================================== */
 @media (max-width: 768px) {

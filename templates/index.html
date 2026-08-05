@@ -160,6 +160,12 @@
                 <!-- Remote participants will be dynamically inserted here -->
             </div>
 
+            <!-- AI Live Closed Captions Banner Overlay -->
+            <div id="caption-overlay" class="caption-overlay hidden">
+                <span id="caption-speaker" class="caption-speaker">AI Transcript:</span>
+                <span id="caption-text" class="caption-text">Listening for speech...</span>
+            </div>
+
             <!-- Floating Room Control Bar -->
             <div id="control-bar" class="floating-control-bar glass-panel">
                 <button type="button" id="toggle-mic-btn" class="control-btn" title="Mute/Unmute Audio">
@@ -201,6 +207,16 @@
                         <button class="reaction-emoji-btn" data-emoji="😂">😂</button>
                     </div>
                 </div>
+
+                <button type="button" id="toggle-captions-btn" class="control-btn" title="Toggle Live AI Closed Captions">
+                    <i class="fa-solid fa-closed-captioning"></i>
+                    <span class="btn-label">Captions</span>
+                </button>
+
+                <button type="button" id="toggle-blur-btn" class="control-btn" title="Toggle AI Background Blur">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    <span class="btn-label">Blur</span>
+                </button>
 
                 <button type="button" id="copy-link-btn" class="control-btn btn-action" title="Share Room Code">
                     <i class="fa-solid fa-share-nodes"></i>
