@@ -877,34 +877,32 @@ body {
     transform: scale(1.3);
 }
 
-/* Floating Emoji Animation Over Participant Tiles */
+/* Floating Emoji Animation Over Screen */
 .floating-emoji {
-    position: absolute;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 2.5rem;
-    z-index: 50;
+    position: fixed;
+    font-size: 3.2rem;
+    z-index: 9999;
     pointer-events: none;
-    animation: floatEmoji 2.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+    animation: floatEmoji 2.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+    filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.6));
 }
 
 @keyframes floatEmoji {
     0% {
         opacity: 0;
-        transform: translate(-50%, 0) scale(0.5);
+        transform: translate(-50%, 0) scale(0.4);
     }
     20% {
         opacity: 1;
-        transform: translate(-50%, -40px) scale(1.3);
+        transform: translate(-50%, -40px) scale(1.4);
     }
-    80% {
-        opacity: 0.9;
-        transform: translate(-50%, -120px) scale(1);
+    75% {
+        opacity: 1;
+        transform: translate(-50%, -140px) scale(1.1);
     }
     100% {
         opacity: 0;
-        transform: translate(-50%, -180px) scale(0.8);
+        transform: translate(-50%, -220px) scale(0.8);
     }
 }
 

@@ -131,14 +131,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Phase 3 Listeners
     elements.toggleCaptionsBtn.addEventListener('click', toggleCaptions);
-    elements.toggleBlurBtn.addEventListener('click', toggleBackgroundBlur);
-    
-    // Reaction Emoji Buttons
-    document.querySelectorAll('.reaction-emoji-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const emoji = e.target.getAttribute('data-emoji');
+    elements.reactionsBtn.addEventListener('click', toggleReactionsPicker);
+
+    // Reaction Emoji Event Delegation
+    elements.reactionsPicker.addEventListener('click', (e) => {
+        const btn = e.target.closest('.reaction-emoji-btn');
+        if (btn) {
+            const emoji = btn.getAttribute('data-emoji');
             sendEmojiReaction(emoji);
-        });
+        }
+    });
+
+    // Close reactions picker when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!elements.reactionsPicker.classList.contains('hidden')) {
+            if (!elements.reactionsPicker.contains(e.target) && !elements.reactionsBtn.contains(e.target)) {
+                elements.reactionsPicker.classList.add('hidden');
+            }
+        }
     });
 
     elements.copyLinkBtn.addEventListener('click', handleCopyInviteLink);
@@ -776,15 +786,16 @@ document.addEventListener('DOMContentLoaded', () => {
      * Send Emoji Reaction
      */
     function sendEmojiReaction(emoji) {
-        if (!roomManager) return;
         elements.reactionsPicker.classList.add('hidden');
 
-        // Broadcast reaction to room participants
-        roomManager.sendDataMessage({
-            type: 'reaction',
-            emoji: emoji,
-            sender: currentUsername
-        });
+        // Broadcast reaction to room participants if connected
+        if (roomManager) {
+            roomManager.sendDataMessage({
+                type: 'reaction',
+                emoji: emoji,
+                sender: currentUsername || 'You'
+            });
+        }
 
         // Animate floating emoji on local tile
         showFloatingEmoji(emoji, elements.localParticipantTile);
@@ -1054,20 +1065,28 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * Animate Floating Emoji Over Participant Video Tile
+     * Animate Floating Emoji Over Participant Video Tile (Screen position calculation)
      */
     function showFloatingEmoji(emoji, tileElement) {
-        if (!tileElement) return;
+        const target = tileElement || elements.localParticipantTile || document.body;
+        const rect = target.getBoundingClientRect();
 
         const emojiEl = document.createElement('div');
         emojiEl.className = 'floating-emoji';
         emojiEl.textContent = emoji;
 
-        tileElement.appendChild(emojiEl);
+        // Position emoji at tile center on screen
+        const leftPos = rect.left + (rect.width / 2);
+        const topPos = rect.top + (rect.height / 2);
+
+        emojiEl.style.left = `${leftPos}px`;
+        emojiEl.style.top = `${topPos}px`;
+
+        document.body.appendChild(emojiEl);
 
         setTimeout(() => {
             emojiEl.remove();
-        }, 2200);
+        }, 2500);
     }
 
     /**
