@@ -608,9 +608,32 @@ body {
     color: var(--success-color);
 }
 
-.indicator.mic-off {
-    background: rgba(239, 68, 68, 0.8);
+.indicator.tile-fullscreen-btn {
+    background: rgba(255, 255, 255, 0.15);
+    color: var(--text-main);
+    border: none;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.indicator.tile-fullscreen-btn:hover {
+    background: var(--primary-color);
     color: white;
+}
+
+/* HTML5 Fullscreen Element Video Fitting */
+:fullscreen .participant-tile,
+:-webkit-full-screen .participant-tile {
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
+    border: none;
+}
+
+:fullscreen video,
+:-webkit-full-screen video {
+    object-fit: contain !important;
+    background: #000;
 }
 
 /* Speaking border indicator */

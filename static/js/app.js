@@ -55,6 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
         reactionsPicker: document.getElementById('reactions-picker'),
         toggleCaptionsBtn: document.getElementById('toggle-captions-btn'),
         toggleBlurBtn: document.getElementById('toggle-blur-btn'),
+        toggleFullscreenBtn: document.getElementById('toggle-fullscreen-btn'),
         copyLinkBtn: document.getElementById('copy-link-btn'),
         leaveBtn: document.getElementById('leave-btn'),
 
@@ -150,6 +151,31 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     });
+
+    elements.toggleFullscreenBtn.addEventListener('click', handleToggleFullscreen);
+
+    // Double-click tile to toggle Fullscreen
+    document.addEventListener('dblclick', (e) => {
+        const tile = e.target.closest('.participant-tile');
+        if (tile) {
+            toggleElementFullscreen(tile);
+        }
+    });
+
+    // Delegated click for tile-fullscreen-btn
+    document.addEventListener('click', (e) => {
+        const fullBtn = e.target.closest('.tile-fullscreen-btn');
+        if (fullBtn) {
+            const tile = fullBtn.closest('.participant-tile');
+            if (tile) {
+                toggleElementFullscreen(tile);
+            }
+        }
+    });
+
+    // Listen for browser fullscreen change events
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
 
     elements.copyLinkBtn.addEventListener('click', handleCopyInviteLink);
     elements.leaveBtn.addEventListener('click', handleLeaveRoom);
@@ -381,6 +407,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span id="mic-indicator-${participant.sid}" class="indicator mic-on">
                         <i class="fa-solid fa-microphone"></i>
                     </span>
+                    <button type="button" class="indicator tile-fullscreen-btn" title="Toggle Tile Fullscreen">
+                        <i class="fa-solid fa-expand"></i>
+                    </button>
                 </div>
             </div>
         `;
@@ -1107,6 +1136,52 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } else if (badge) {
             badge.remove();
+        }
+    }
+
+    /**
+     * Handle Global Room Fullscreen Toggle
+     */
+    function handleToggleFullscreen() {
+        toggleElementFullscreen(elements.roomContainer);
+    }
+
+    /**
+     * Toggle HTML5 Fullscreen for any target element (Room Container or Video Tile)
+     */
+    function toggleElementFullscreen(targetEl) {
+        if (!targetEl) return;
+
+        const fsElement = document.fullscreenElement || document.webkitFullscreenElement;
+
+        if (!fsElement) {
+            if (targetEl.requestFullscreen) {
+                targetEl.requestFullscreen().catch(err => console.warn('Fullscreen denied:', err));
+            } else if (targetEl.webkitRequestFullscreen) {
+                targetEl.webkitRequestFullscreen();
+            }
+        } else {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            }
+        }
+    }
+
+    /**
+     * Listen for Fullscreen State Change to Update Control Button Icons
+     */
+    function handleFullscreenChange() {
+        const fsElement = document.fullscreenElement || document.webkitFullscreenElement;
+        const icon = elements.toggleFullscreenBtn.querySelector('i');
+
+        if (fsElement) {
+            elements.toggleFullscreenBtn.classList.add('btn-primary');
+            if (icon) icon.className = 'fa-solid fa-compress';
+        } else {
+            elements.toggleFullscreenBtn.classList.remove('btn-primary');
+            if (icon) icon.className = 'fa-solid fa-expand';
         }
     }
 
