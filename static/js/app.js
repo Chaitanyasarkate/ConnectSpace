@@ -153,7 +153,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Fullscreen Listeners
-    elements.toggleFullscreenBtn.addEventListener('click', toggleAppFullscreen);
+    if (elements.toggleFullscreenBtn) {
+        elements.toggleFullscreenBtn.addEventListener('click', toggleAppFullscreen);
+    }
     
     // Bind Local Tile Fullscreen Button
     const localFullscreenBtn = elements.localParticipantTile.querySelector('.tile-fullscreen-btn');
