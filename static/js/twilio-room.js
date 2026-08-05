@@ -10,11 +10,16 @@ class TwilioRoomManager {
         this.isAudioMuted = false;
         this.isVideoOff = false;
         
+        this.screenTrack = null;
+        this.dataTrack = null;
+
         // Event callbacks
         this.onParticipantJoined = options.onParticipantJoined || (() => {});
         this.onParticipantLeft = options.onParticipantLeft || (() => {});
         this.onTrackSubscribed = options.onTrackSubscribed || (() => {});
         this.onTrackUnsubscribed = options.onTrackUnsubscribed || (() => {});
+        this.onDataMessage = options.onDataMessage || (() => {});
+        this.onScreenShareEnded = options.onScreenShareEnded || (() => {});
         this.onError = options.onError || (() => {});
         this.onDisconnected = options.onDisconnected || (() => {});
     }
@@ -51,11 +56,15 @@ class TwilioRoomManager {
         }
 
         try {
-            // Connect to Twilio Room with audio and video options
+            // Initialize WebRTC DataTrack for chat and reactions
+            this.dataTrack = new Twilio.Video.LocalDataTrack();
+
+            // Connect to Twilio Room with audio, video, and data tracks
             this.room = await Twilio.Video.connect(token, {
                 name: roomName,
                 audio: true,
                 video: { width: 640, height: 480, frameRate: 24 },
+                tracks: [this.dataTrack],
                 dominantSpeaker: true,
                 maxAudioBitrate: 16000,
                 networkQuality: { local: 1, remote: 1 }
@@ -130,13 +139,13 @@ class TwilioRoomManager {
         // Attach existing tracks
         participant.tracks.forEach(publication => {
             if (publication.isSubscribed && publication.track) {
-                this.onTrackSubscribed(publication.track, participant);
+                this.bindRemoteTrack(publication.track, participant);
             }
         });
 
         // Listen for new tracks subscribed
         participant.on('trackSubscribed', track => {
-            this.onTrackSubscribed(track, participant);
+            this.bindRemoteTrack(track, participant);
         });
 
         // Listen for tracks unsubscribed
@@ -146,11 +155,79 @@ class TwilioRoomManager {
     }
 
     /**
+     * Bind Remote Track (Audio, Video, or Data)
+     */
+    bindRemoteTrack(track, participant) {
+        if (track.kind === 'data') {
+            track.on('message', data => {
+                try {
+                    const parsed = JSON.parse(data);
+                    this.onDataMessage(parsed, participant);
+                } catch (e) {
+                    this.onDataMessage({ type: 'chat', text: data }, participant);
+                }
+            });
+        } else {
+            this.onTrackSubscribed(track, participant);
+        }
+    }
+
+    /**
      * Handle Remote Participant Disconnection
      * @param {Object} participant - Twilio RemoteParticipant
      */
     handleParticipantDisconnected(participant) {
         this.onParticipantLeft(participant);
+    }
+
+    /**
+     * Broadcast Data Track Message to all Room Participants
+     * @param {Object} payload - Data payload
+     */
+    sendDataMessage(payload) {
+        if (this.dataTrack) {
+            this.dataTrack.send(JSON.stringify(payload));
+        }
+    }
+
+    /**
+     * Start Screen Share Session
+     */
+    async startScreenShare() {
+        if (!this.room || !this.room.localParticipant) return null;
+        if (this.screenTrack) return this.screenTrack;
+
+        try {
+            const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+            const mediaStreamTrack = stream.getVideoTracks()[0];
+
+            this.screenTrack = new Twilio.Video.LocalVideoTrack(mediaStreamTrack, {
+                name: 'screen'
+            });
+
+            // Listen for native browser "Stop sharing" button
+            mediaStreamTrack.onended = () => {
+                this.stopScreenShare();
+            };
+
+            await this.room.localParticipant.publishTrack(this.screenTrack);
+            return this.screenTrack;
+        } catch (err) {
+            console.warn('Screen share canceled or denied:', err);
+            throw err;
+        }
+    }
+
+    /**
+     * Stop Screen Share Session
+     */
+    stopScreenShare() {
+        if (this.screenTrack && this.room && this.room.localParticipant) {
+            this.room.localParticipant.unpublishTrack(this.screenTrack);
+            this.screenTrack.stop();
+            this.screenTrack = null;
+            this.onScreenShareEnded();
+        }
     }
 
     /**
@@ -201,6 +278,9 @@ class TwilioRoomManager {
      * Leave and Disconnect from Room cleanly
      */
     disconnect() {
+        if (this.screenTrack) {
+            this.stopScreenShare();
+        }
         if (this.room) {
             this.room.disconnect();
             this.room = null;
@@ -212,12 +292,17 @@ class TwilioRoomManager {
      * Stop all local tracks and release camera/mic resources
      */
     cleanup() {
+        if (this.screenTrack) {
+            this.screenTrack.stop();
+            this.screenTrack = null;
+        }
         this.localTracks.forEach(track => {
             if (track.stop) {
                 track.stop();
             }
         });
         this.localTracks = [];
+        this.dataTrack = null;
         this.isAudioMuted = false;
         this.isVideoOff = false;
     }

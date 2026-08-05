@@ -163,6 +163,36 @@
                     <span class="btn-label">Camera</span>
                 </button>
 
+                <button type="button" id="toggle-screen-btn" class="control-btn" title="Share Screen">
+                    <i class="fa-solid fa-desktop"></i>
+                    <span class="btn-label">Share</span>
+                </button>
+
+                <button type="button" id="toggle-chat-btn" class="control-btn relative" title="In-Call Chat">
+                    <i class="fa-solid fa-comments"></i>
+                    <span class="btn-label">Chat</span>
+                    <span id="unread-badge" class="badge-unread hidden">0</span>
+                </button>
+
+                <button type="button" id="hand-raise-btn" class="control-btn" title="Raise / Lower Hand">
+                    <i class="fa-solid fa-hand"></i>
+                    <span class="btn-label">Raise</span>
+                </button>
+
+                <div class="reaction-popover-wrapper">
+                    <button type="button" id="reactions-btn" class="control-btn" title="Send Reaction">
+                        <i class="fa-solid fa-face-smile"></i>
+                        <span class="btn-label">React</span>
+                    </button>
+                    <div id="reactions-picker" class="reactions-picker hidden glass-panel">
+                        <button class="reaction-emoji-btn" data-emoji="👏">👏</button>
+                        <button class="reaction-emoji-btn" data-emoji="❤️">❤️</button>
+                        <button class="reaction-emoji-btn" data-emoji="👍">👍</button>
+                        <button class="reaction-emoji-btn" data-emoji="🎉">🎉</button>
+                        <button class="reaction-emoji-btn" data-emoji="😂">😂</button>
+                    </div>
+                </div>
+
                 <button type="button" id="copy-link-btn" class="control-btn btn-action" title="Share Room Code">
                     <i class="fa-solid fa-share-nodes"></i>
                     <span class="btn-label">Invite</span>
@@ -173,6 +203,28 @@
                     <span class="btn-label">Leave</span>
                 </button>
             </div>
+
+            <!-- In-Call Side Chat Drawer -->
+            <aside id="chat-panel" class="chat-drawer glass-panel hidden">
+                <div class="chat-header">
+                    <h3><i class="fa-solid fa-comments"></i> In-Call Chat</h3>
+                    <button type="button" id="close-chat-btn" class="icon-btn-sm" title="Close Chat">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div id="chat-messages" class="chat-messages-container">
+                    <div class="chat-welcome-notice">
+                        <i class="fa-solid fa-shield-halved"></i>
+                        <p>Messages are end-to-end transmitted via WebRTC data channel.</p>
+                    </div>
+                </div>
+                <form id="chat-form" class="chat-input-form">
+                    <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off" required maxlength="500">
+                    <button type="submit" id="send-msg-btn" class="btn btn-primary btn-sm">
+                        <i class="fa-solid fa-paper-plane"></i>
+                    </button>
+                </form>
+            </aside>
         </section>
     </main>
 

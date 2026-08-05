@@ -42,8 +42,21 @@ document.addEventListener('DOMContentLoaded', () => {
         // Control Bar
         toggleMicBtn: document.getElementById('toggle-mic-btn'),
         toggleCamBtn: document.getElementById('toggle-cam-btn'),
+        toggleScreenBtn: document.getElementById('toggle-screen-btn'),
+        toggleChatBtn: document.getElementById('toggle-chat-btn'),
+        unreadBadge: document.getElementById('unread-badge'),
+        handRaiseBtn: document.getElementById('hand-raise-btn'),
+        reactionsBtn: document.getElementById('reactions-btn'),
+        reactionsPicker: document.getElementById('reactions-picker'),
         copyLinkBtn: document.getElementById('copy-link-btn'),
-        leaveBtn: document.getElementById('leave-btn')
+        leaveBtn: document.getElementById('leave-btn'),
+
+        // In-Call Chat Drawer
+        chatPanel: document.getElementById('chat-panel'),
+        closeChatBtn: document.getElementById('close-chat-btn'),
+        chatMessages: document.getElementById('chat-messages'),
+        chatForm: document.getElementById('chat-form'),
+        chatInput: document.getElementById('chat-input')
     };
 
     // State Variables
@@ -54,6 +67,13 @@ document.addEventListener('DOMContentLoaded', () => {
     let callTimerInterval = null;
     let callStartTime = null;
     let activeParticipants = new Map(); // Store remote participant tiles by SID
+    
+    // Phase 1 State
+    let isSharingScreen = false;
+    let isHandRaised = false;
+    let isChatOpen = false;
+    let unreadCount = 0;
+    let currentUsername = '';
 
     // Check Backend Health & Twilio Config Status on Load
     checkBackendHealth();
@@ -75,6 +95,21 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.joinForm.addEventListener('submit', handleJoinRoomSubmit);
     elements.toggleMicBtn.addEventListener('click', handleToggleMic);
     elements.toggleCamBtn.addEventListener('click', handleToggleCam);
+    elements.toggleScreenBtn.addEventListener('click', handleToggleScreenShare);
+    elements.toggleChatBtn.addEventListener('click', toggleChatDrawer);
+    elements.closeChatBtn.addEventListener('click', toggleChatDrawer);
+    elements.chatForm.addEventListener('submit', handleSendChatMessage);
+    elements.handRaiseBtn.addEventListener('click', handleToggleHandRaise);
+    elements.reactionsBtn.addEventListener('click', toggleReactionsPicker);
+    
+    // Reaction Emoji Buttons
+    document.querySelectorAll('.reaction-emoji-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const emoji = e.target.getAttribute('data-emoji');
+            sendEmojiReaction(emoji);
+        });
+    });
+
     elements.copyLinkBtn.addEventListener('click', handleCopyInviteLink);
     elements.leaveBtn.addEventListener('click', handleLeaveRoom);
 
@@ -172,6 +207,7 @@ document.addEventListener('DOMContentLoaded', () => {
             localPreviewStream = null;
         }
 
+        currentUsername = username;
         showLoading(true, 'Connecting to Twilio Room...');
 
         try {
@@ -181,6 +217,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 onParticipantLeft: handleRemoteParticipantLeft,
                 onTrackSubscribed: handleRemoteTrackSubscribed,
                 onTrackUnsubscribed: handleRemoteTrackUnsubscribed,
+                onDataMessage: handleIncomingDataMessage,
+                onScreenShareEnded: handleScreenShareEnded,
                 onDisconnected: handleRoomDisconnected
             });
 
@@ -510,6 +548,212 @@ document.addEventListener('DOMContentLoaded', () => {
     function showLoading(show, message = 'Loading...') {
         elements.loadingMessage.textContent = message;
         elements.loadingOverlay.classList.toggle('hidden', !show);
+    }
+
+    /**
+     * Handle Screen Sharing Toggle
+     */
+    async function handleToggleScreenShare() {
+        if (!roomManager) return;
+
+        if (!isSharingScreen) {
+            try {
+                const screenTrack = await roomManager.startScreenShare();
+                if (screenTrack) {
+                    isSharingScreen = true;
+                    elements.toggleScreenBtn.classList.add('btn-action');
+                    showToast('Screen sharing started', 'success');
+                }
+            } catch (err) {
+                showToast('Failed to start screen share.', 'error');
+            }
+        } else {
+            roomManager.stopScreenShare();
+            handleScreenShareEnded();
+        }
+    }
+
+    function handleScreenShareEnded() {
+        isSharingScreen = false;
+        elements.toggleScreenBtn.classList.remove('btn-action');
+        showToast('Screen sharing stopped', 'info');
+    }
+
+    /**
+     * Toggle In-Call Chat Side Drawer
+     */
+    function toggleChatDrawer() {
+        isChatOpen = !isChatOpen;
+        elements.chatPanel.classList.toggle('hidden', !isChatOpen);
+        elements.toggleChatBtn.classList.toggle('active', isChatOpen);
+
+        if (isChatOpen) {
+            unreadCount = 0;
+            elements.unreadBadge.classList.add('hidden');
+            elements.unreadBadge.textContent = '0';
+            elements.chatInput.focus();
+        }
+    }
+
+    /**
+     * Handle Sending Chat Message
+     */
+    function handleSendChatMessage(e) {
+        e.preventDefault();
+        const text = elements.chatInput.value.trim();
+        if (!text || !roomManager) return;
+
+        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        // Broadcast via WebRTC DataTrack
+        roomManager.sendDataMessage({
+            type: 'chat',
+            text: text,
+            sender: currentUsername,
+            time: timeStr
+        });
+
+        // Append to local chat UI
+        appendChatMessage(text, currentUsername, timeStr, true);
+        elements.chatInput.value = '';
+    }
+
+    /**
+     * Append message bubble to chat container
+     */
+    function appendChatMessage(text, sender, time, isSelf = false) {
+        const msgBubble = document.createElement('div');
+        msgBubble.className = `chat-msg-bubble ${isSelf ? 'chat-msg-self' : ''}`;
+        msgBubble.innerHTML = `
+            <span class="chat-msg-sender">${escapeHtml(sender)}</span>
+            <span>${escapeHtml(text)}</span>
+            <span class="chat-msg-time">${time}</span>
+        `;
+        elements.chatMessages.appendChild(msgBubble);
+        elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+    }
+
+    /**
+     * Toggle Reactions Picker Menu
+     */
+    function toggleReactionsPicker() {
+        elements.reactionsPicker.classList.toggle('hidden');
+    }
+
+    /**
+     * Send Emoji Reaction
+     */
+    function sendEmojiReaction(emoji) {
+        if (!roomManager) return;
+        elements.reactionsPicker.classList.add('hidden');
+
+        // Broadcast reaction to room participants
+        roomManager.sendDataMessage({
+            type: 'reaction',
+            emoji: emoji,
+            sender: currentUsername
+        });
+
+        // Animate floating emoji on local tile
+        showFloatingEmoji(emoji, elements.localParticipantTile);
+    }
+
+    /**
+     * Handle Hand Raise Toggle
+     */
+    function handleToggleHandRaise() {
+        if (!roomManager) return;
+
+        isHandRaised = !isHandRaised;
+        elements.handRaiseBtn.classList.toggle('hand-active', isHandRaised);
+
+        // Update local tile UI
+        updateHandRaisedUI(elements.localParticipantTile, isHandRaised, 'You');
+
+        // Broadcast hand raise event
+        roomManager.sendDataMessage({
+            type: 'hand_raise',
+            raised: isHandRaised,
+            sender: currentUsername
+        });
+
+        showToast(isHandRaised ? 'Hand raised ✋' : 'Hand lowered', 'info', 2000);
+    }
+
+    /**
+     * Handle Incoming WebRTC DataTrack Messages
+     */
+    function handleIncomingDataMessage(payload, participant) {
+        const senderName = payload.sender || participant.identity;
+
+        if (payload.type === 'chat') {
+            appendChatMessage(payload.text, senderName, payload.time || 'Now', false);
+
+            if (!isChatOpen) {
+                unreadCount++;
+                elements.unreadBadge.textContent = unreadCount > 9 ? '9+' : unreadCount;
+                elements.unreadBadge.classList.remove('hidden');
+                showToast(`💬 New message from ${senderName}`, 'info', 3000);
+            }
+        } else if (payload.type === 'reaction') {
+            const tile = document.getElementById(`tile-${participant.sid}`) || elements.localParticipantTile;
+            showFloatingEmoji(payload.emoji, tile);
+        } else if (payload.type === 'hand_raise') {
+            const tile = document.getElementById(`tile-${participant.sid}`) || elements.localParticipantTile;
+            updateHandRaisedUI(tile, payload.raised, senderName);
+            if (payload.raised) {
+                showToast(`✋ ${senderName} raised their hand!`, 'info', 4000);
+            }
+        }
+    }
+
+    /**
+     * Animate Floating Emoji Over Participant Video Tile
+     */
+    function showFloatingEmoji(emoji, tileElement) {
+        if (!tileElement) return;
+
+        const emojiEl = document.createElement('div');
+        emojiEl.className = 'floating-emoji';
+        emojiEl.textContent = emoji;
+
+        tileElement.appendChild(emojiEl);
+
+        setTimeout(() => {
+            emojiEl.remove();
+        }, 2200);
+    }
+
+    /**
+     * Update Hand Raised Badge on Participant Tile
+     */
+    function updateHandRaisedUI(tileElement, isRaised, name) {
+        if (!tileElement) return;
+        const identityContainer = tileElement.querySelector('.user-identity');
+        if (!identityContainer) return;
+
+        let badge = identityContainer.querySelector('.hand-raised-badge');
+        if (isRaised) {
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.className = 'hand-raised-badge';
+                badge.innerHTML = '<i class="fa-solid fa-hand"></i> ✋';
+                identityContainer.appendChild(badge);
+            }
+        } else if (badge) {
+            badge.remove();
+        }
+    }
+
+    /**
+     * Helper: Escape HTML strings to prevent XSS
+     */
+    function escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
     }
 
     /**
