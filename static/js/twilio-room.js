@@ -57,15 +57,27 @@ class TwilioRoomManager {
         }
 
         try {
-            // Initialize WebRTC DataTrack for chat and reactions
+            // 1. Create local Audio & Video media tracks from camera and mic
+            let localMediaTracks = [];
+            try {
+                localMediaTracks = await Twilio.Video.createLocalTracks({
+                    audio: true,
+                    video: { width: 640, height: 480, frameRate: 24 }
+                });
+            } catch (mediaErr) {
+                console.warn('Could not create local audio/video tracks:', mediaErr);
+            }
+
+            // 2. Initialize WebRTC DataTrack for chat, captions, and reactions
             this.dataTrack = new Twilio.Video.LocalDataTrack();
 
-            // Connect to Twilio Room with audio, video, and data tracks
+            // 3. Combine audio, video, and data tracks
+            const allTracks = [...localMediaTracks, this.dataTrack];
+
+            // 4. Connect to Twilio Room with all local tracks
             this.room = await Twilio.Video.connect(token, {
                 name: roomName,
-                audio: true,
-                video: { width: 640, height: 480, frameRate: 24 },
-                tracks: [this.dataTrack],
+                tracks: allTracks,
                 dominantSpeaker: true,
                 maxAudioBitrate: 16000,
                 networkQuality: { local: 1, remote: 1 }

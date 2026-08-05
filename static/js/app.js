@@ -304,6 +304,8 @@ document.addEventListener('DOMContentLoaded', () => {
         localParticipant.videoTracks.forEach(publication => {
             if (publication.track) {
                 publication.track.attach(elements.localVideo);
+                elements.localVideo.style.display = 'block';
+                elements.localVideoFallback.classList.add('hidden');
             }
         });
 
