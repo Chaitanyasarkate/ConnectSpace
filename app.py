@@ -11,6 +11,23 @@ app.config.from_object(Config)
 CORS(app)
 
 
+@app.after_request
+def add_security_headers(response):
+    """Add Content-Security-Policy header allowing unsafe-eval for Twilio WebRTC SDK."""
+    csp = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://sdk.twilio.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
+        "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:; "
+        "img-src 'self' data: blob: https:; "
+        "media-src 'self' blob: mediastream:; "
+        "connect-src 'self' wss: https: https://*.twilio.com wss://*.twilio.com; "
+        "worker-src 'self' blob:;"
+    )
+    response.headers["Content-Security-Policy"] = csp
+    return response
+
+
 @app.route("/")
 def index():
     """Render the single page video chat application."""
