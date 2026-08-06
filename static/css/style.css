@@ -1220,8 +1220,9 @@ body {
 }
 
 /* Camera Background Blur Filter */
+video.video-blurred,
 .video-wrapper video.video-blurred {
-    filter: blur(16px) brightness(1.05) contrast(1.05);
+    filter: blur(20px) brightness(1.05) contrast(1.05) !important;
 }
 
 /* ==========================================================================

@@ -132,7 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Phase 3 Listeners
     elements.toggleCaptionsBtn.addEventListener('click', toggleCaptions);
-    elements.reactionsBtn.addEventListener('click', toggleReactionsPicker);
+    elements.toggleBlurBtn.addEventListener('click', toggleBackgroundBlur);
 
     // Reaction Emoji Event Delegation
     elements.reactionsPicker.addEventListener('click', (e) => {
