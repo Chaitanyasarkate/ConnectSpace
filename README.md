@@ -58,7 +58,6 @@
 ```
 flask-twilio-video/
 ├── .env.example            # Template for Twilio credentials & Flask configuration
-├── .gitignore              # Ignores sensitive environment variables & caches
 ├── README.md               # Complete project documentation & deployment guide
 ├── render.yaml             # Render Cloud deployment specification
 ├── requirements.txt        # Python package dependencies (Flask, Twilio, Gunicorn)
