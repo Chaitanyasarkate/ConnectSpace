@@ -6,10 +6,10 @@ load_dotenv()
 
 class Config:
     """Application configuration class."""
-    SECRET_KEY = os.getenv("SECRET_KEY", "default-dev-secret-key-change-me")
-    TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
-    TWILIO_API_KEY_SID = os.getenv("TWILIO_API_KEY_SID", "")
-    TWILIO_API_KEY_SECRET = os.getenv("TWILIO_API_KEY_SECRET", "")
+    SECRET_KEY = os.getenv("SECRET_KEY", "default-dev-secret-key-change-me").strip()
+    TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
+    TWILIO_API_KEY_SID = os.getenv("TWILIO_API_KEY_SID", "").strip()
+    TWILIO_API_KEY_SECRET = os.getenv("TWILIO_API_KEY_SECRET", "").strip()
     PORT = int(os.getenv("PORT", 5000))
     DEBUG = os.getenv("FLASK_ENV", "development").lower() == "development"
 

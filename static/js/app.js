@@ -137,17 +137,39 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.toggleCaptionsBtn.addEventListener('click', toggleCaptions);
     elements.toggleBlurBtn.addEventListener('click', toggleBackgroundBlur);
 
-    // Reaction Emoji Event Delegation
-    elements.reactionsPicker.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const btn = e.target.closest('.reaction-emoji-btn');
-        if (btn) {
-            const emoji = btn.getAttribute('data-emoji') || btn.dataset.emoji || btn.textContent.trim();
-            if (emoji) {
-                sendEmojiReaction(emoji);
-            }
+    // Reaction Emoji Event Delegation & Direct Binding
+    window.sendEmojiReaction = function(emoji, event) {
+        if (event) {
+            if (event.preventDefault) event.preventDefault();
+            if (event.stopPropagation) event.stopPropagation();
         }
-    });
+        sendEmojiReaction(emoji);
+    };
+
+    if (elements.reactionsPicker) {
+        elements.reactionsPicker.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const btn = e.target.closest('.reaction-emoji-btn');
+            if (btn) {
+                const emoji = btn.getAttribute('data-emoji') || btn.dataset.emoji || btn.textContent.trim();
+                if (emoji) {
+                    sendEmojiReaction(emoji);
+                }
+            }
+        });
+
+        elements.reactionsPicker.querySelectorAll('.reaction-emoji-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const emoji = btn.getAttribute('data-emoji') || btn.dataset.emoji || btn.textContent.trim();
+                if (emoji) sendEmojiReaction(emoji);
+            });
+            btn.addEventListener('pointerdown', (e) => {
+                e.stopPropagation();
+            });
+        });
+    }
 
     // Close reactions picker when clicking outside
     document.addEventListener('click', (e) => {
@@ -821,11 +843,34 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!emoji) return;
 
         // Immediately close reactions picker
-        elements.reactionsPicker.classList.add('hidden');
+        if (elements.reactionsPicker) {
+            elements.reactionsPicker.classList.add('hidden');
+        }
 
-        // Broadcast reaction to room participants if connected
+        // 1. Animate celebratory floating emoji burst from the React button / bottom area
         try {
-            if (roomManager) {
+            triggerEmojiStream(emoji, elements.reactionsBtn || elements.localParticipantTile);
+        } catch (streamErr) {
+            console.warn('Emoji stream error:', streamErr);
+        }
+
+        // 2. Show animated reaction badge on local video tile
+        try {
+            showTileReactionBadge(elements.localParticipantTile, emoji);
+        } catch (badgeErr) {
+            console.warn('Tile badge error:', badgeErr);
+        }
+
+        // 3. Feedback toast confirmation
+        try {
+            showToast(`Reacted with ${emoji}`, 'info', 1800);
+        } catch (toastErr) {
+            console.warn('Toast error:', toastErr);
+        }
+
+        // 4. Broadcast reaction to room participants if connected
+        try {
+            if (roomManager && typeof roomManager.sendDataMessage === 'function') {
                 roomManager.sendDataMessage({
                     type: 'reaction',
                     emoji: emoji,
@@ -835,15 +880,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (err) {
             console.warn('Could not broadcast emoji reaction:', err);
         }
-
-        // Animate celebratory floating emoji burst from the React button / bottom area
-        triggerEmojiStream(emoji, elements.reactionsBtn);
-
-        // Show animated reaction badge on local video tile
-        showTileReactionBadge(elements.localParticipantTile, emoji);
-
-        // Feedback toast
-        showToast(`Reacted with ${emoji}`, 'info', 1800);
     }
 
     /**

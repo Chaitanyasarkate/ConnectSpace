@@ -19,7 +19,7 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📹</text></svg>">
 
     <!-- Application Custom CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=3.2">
 </head>
 <body>
     <div class="app-background"></div>
@@ -207,13 +207,13 @@
                         <span class="btn-label">React</span>
                     </button>
                     <div id="reactions-picker" class="reactions-picker hidden glass-panel">
-                        <button type="button" class="reaction-emoji-btn" data-emoji="👏" title="Clap">👏</button>
-                        <button type="button" class="reaction-emoji-btn" data-emoji="❤️" title="Love">❤️</button>
-                        <button type="button" class="reaction-emoji-btn" data-emoji="👍" title="Thumbs Up">👍</button>
-                        <button type="button" class="reaction-emoji-btn" data-emoji="🎉" title="Party">🎉</button>
-                        <button type="button" class="reaction-emoji-btn" data-emoji="😂" title="Laugh">😂</button>
-                        <button type="button" class="reaction-emoji-btn" data-emoji="🔥" title="Fire">🔥</button>
-                        <button type="button" class="reaction-emoji-btn" data-emoji="🙌" title="Celebrate">🙌</button>
+                        <button type="button" class="reaction-emoji-btn" data-emoji="👏" title="Clap" onclick="window.sendEmojiReaction('👏', event)">👏</button>
+                        <button type="button" class="reaction-emoji-btn" data-emoji="❤️" title="Love" onclick="window.sendEmojiReaction('❤️', event)">❤️</button>
+                        <button type="button" class="reaction-emoji-btn" data-emoji="👍" title="Thumbs Up" onclick="window.sendEmojiReaction('👍', event)">👍</button>
+                        <button type="button" class="reaction-emoji-btn" data-emoji="🎉" title="Party" onclick="window.sendEmojiReaction('🎉', event)">🎉</button>
+                        <button type="button" class="reaction-emoji-btn" data-emoji="😂" title="Laugh" onclick="window.sendEmojiReaction('😂', event)">😂</button>
+                        <button type="button" class="reaction-emoji-btn" data-emoji="🔥" title="Fire" onclick="window.sendEmojiReaction('🔥', event)">🔥</button>
+                        <button type="button" class="reaction-emoji-btn" data-emoji="🙌" title="Celebrate" onclick="window.sendEmojiReaction('🙌', event)">🙌</button>
                     </div>
                 </div>
 
@@ -274,7 +274,7 @@
     <script src="https://cdn.jsdelivr.net/npm/twilio-video@2.28.1/dist/twilio-video.min.js"></script>
 
     <!-- Application JavaScript -->
-    <script src="{{ url_for('static', filename='js/twilio-room.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/twilio-room.js') }}?v=3.2"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=3.2"></script>
 </body>
 </html>
