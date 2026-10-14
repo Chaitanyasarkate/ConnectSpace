@@ -56,6 +56,9 @@ def get_token():
     Generate a Twilio Video Access Token for a given user identity and room name.
     Expects JSON body: { "identity": "User Name", "room": "Room Name" }
     """
+    from dotenv import load_dotenv
+    load_dotenv(override=True)
+
     data = request.get_json() or {}
     identity = data.get("identity", "").strip()
     room = data.get("room", "").strip()
@@ -72,8 +75,12 @@ def get_token():
             "code": "MISSING_ROOM"
         }), 400
 
+    account_sid = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
+    api_key_sid = os.getenv("TWILIO_API_KEY_SID", "").strip()
+    api_key_secret = os.getenv("TWILIO_API_KEY_SECRET", "").strip()
+
     # Validate Twilio environment configuration
-    if not Config.is_twilio_configured():
+    if not (account_sid and api_key_sid and api_key_secret):
         return jsonify({
             "error": "Twilio credentials are not configured. Please set TWILIO_ACCOUNT_SID, TWILIO_API_KEY_SID, and TWILIO_API_KEY_SECRET in your .env file.",
             "code": "TWILIO_NOT_CONFIGURED"
@@ -82,9 +89,9 @@ def get_token():
     try:
         # Create Access Token
         token = AccessToken(
-            Config.TWILIO_ACCOUNT_SID,
-            Config.TWILIO_API_KEY_SID,
-            Config.TWILIO_API_KEY_SECRET,
+            account_sid,
+            api_key_sid,
+            api_key_secret,
             identity=identity,
             ttl=3600
         )
