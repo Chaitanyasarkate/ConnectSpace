@@ -1,11 +1,13 @@
 services:
   - type: web
-    name: visionmeet-video-app
+    name: connectspace
     env: python
     region: oregon
     plan: free
+    branch: main
+    autoDeploy: true
     buildCommand: "pip install -r requirements.txt"
-    startCommand: "gunicorn --bind 0.0.0.0:$PORT app:app"
+    startCommand: "gunicorn --bind 0.0.0.0:$PORT --workers 4 --threads 2 app:app"
     healthCheckPath: /api/health
     envVars:
       - key: FLASK_ENV

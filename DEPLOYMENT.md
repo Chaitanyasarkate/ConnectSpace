@@ -73,19 +73,32 @@ docker-compose down
 
 ---
 
-## 🚀 4. Render Deployment
+## 🚀 4. Automated Render Deployment (Continuous Deployment)
 
-Render automatically detects the [`render.yaml`](file:///c:/Users/chaitanya%20sarkate/OneDrive/Desktop/flask-twilio-video/render.yaml) file in your repository.
+Deploying to Render is automated on every `git push origin main`.
 
-1. Push your repository to **GitHub** or **GitLab**.
-2. Log in to **[Render.com](https://render.com/)** and click **New -> Web Service**.
-3. Connect your Git repository.
-4. Render will auto-fill settings:
-   - **Environment**: `Python`
-   - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `gunicorn --bind 0.0.0.0:$PORT --workers 4 app:app`
-5. Add your Environment Variables (`TWILIO_ACCOUNT_SID`, `TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET`, `SECRET_KEY`).
-6. Click **Deploy Web Service**.
+### Method A: Native Auto-Deploy (Recommended & Easiest)
+1. In your **[Render Dashboard](https://dashboard.render.com/)**, select your Web Service.
+2. Go to **Settings** -> **Build & Deploy**.
+3. Verify that **Branch** is set to `main`.
+4. Ensure **Auto-Deploy** is set to **Yes**.
+   - With this enabled, Render automatically triggers a rebuild and deploy whenever a commit is pushed to `main`.
+5. Under **Environment Variables**, verify:
+   - `TWILIO_ACCOUNT_SID`
+   - `TWILIO_API_KEY_SID`
+   - `TWILIO_API_KEY_SECRET`
+   - `SECRET_KEY`
+
+### Method B: GitHub Actions Deploy Hook (Optional Direct CI/CD)
+A GitHub Actions workflow is located at `.github/workflows/deploy.yml`.
+To trigger Render via GitHub Actions:
+1. In Render Dashboard -> Web Service -> **Settings** -> Scroll down to **Deploy Hook**.
+2. Copy the Deploy Hook URL: `https://api.render.com/deploy/srv-xxxxxx?key=yyyyyy`
+3. In your GitHub repository: Go to **Settings** -> **Secrets and variables** -> **Actions**.
+4. Click **New repository secret**:
+   - **Name**: `RENDER_DEPLOY_HOOK_URL`
+   - **Value**: *(Paste your Render Deploy Hook URL)*
+5. Now, every push to `main` runs syntax checks and pings Render to deploy immediately!
 
 ---
 
