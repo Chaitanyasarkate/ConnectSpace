@@ -205,8 +205,11 @@ class TwilioRoomManager {
      * @param {Object} payload - Data payload
      */
     sendDataMessage(payload) {
-        if (this.dataTrack) {
+        if (!this.dataTrack) return;
+        try {
             this.dataTrack.send(JSON.stringify(payload));
+        } catch (err) {
+            console.warn('Twilio DataTrack broadcast skipped (peer data channel not yet ready/open):', err);
         }
     }
 

@@ -124,7 +124,10 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.closeChatBtn.addEventListener('click', toggleChatDrawer);
     elements.chatForm.addEventListener('submit', handleSendChatMessage);
     elements.handRaiseBtn.addEventListener('click', handleToggleHandRaise);
-    elements.reactionsBtn.addEventListener('click', toggleReactionsPicker);
+    elements.reactionsBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleReactionsPicker(e);
+    });
 
     // Phase 2 Listeners
     elements.toggleViewBtn.addEventListener('click', toggleSpeakerView);
@@ -136,10 +139,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Reaction Emoji Event Delegation
     elements.reactionsPicker.addEventListener('click', (e) => {
+        e.stopPropagation();
         const btn = e.target.closest('.reaction-emoji-btn');
         if (btn) {
-            const emoji = btn.getAttribute('data-emoji');
-            sendEmojiReaction(emoji);
+            const emoji = btn.getAttribute('data-emoji') || btn.dataset.emoji || btn.textContent.trim();
+            if (emoji) {
+                sendEmojiReaction(emoji);
+            }
         }
     });
 
@@ -803,7 +809,8 @@ document.addEventListener('DOMContentLoaded', () => {
     /**
      * Toggle Reactions Picker Menu
      */
-    function toggleReactionsPicker() {
+    function toggleReactionsPicker(e) {
+        if (e) e.stopPropagation();
         elements.reactionsPicker.classList.toggle('hidden');
     }
 
@@ -811,19 +818,32 @@ document.addEventListener('DOMContentLoaded', () => {
      * Send Emoji Reaction
      */
     function sendEmojiReaction(emoji) {
+        if (!emoji) return;
+
+        // Immediately close reactions picker
         elements.reactionsPicker.classList.add('hidden');
 
         // Broadcast reaction to room participants if connected
-        if (roomManager) {
-            roomManager.sendDataMessage({
-                type: 'reaction',
-                emoji: emoji,
-                sender: currentUsername || 'You'
-            });
+        try {
+            if (roomManager) {
+                roomManager.sendDataMessage({
+                    type: 'reaction',
+                    emoji: emoji,
+                    sender: currentUsername || 'You'
+                });
+            }
+        } catch (err) {
+            console.warn('Could not broadcast emoji reaction:', err);
         }
 
-        // Animate floating emoji on local tile
-        showFloatingEmoji(emoji, elements.localParticipantTile);
+        // Animate celebratory floating emoji burst from the React button / bottom area
+        triggerEmojiStream(emoji, elements.reactionsBtn);
+
+        // Show animated reaction badge on local video tile
+        showTileReactionBadge(elements.localParticipantTile, emoji);
+
+        // Feedback toast
+        showToast(`Reacted with ${emoji}`, 'info', 1800);
     }
 
     /**
@@ -865,8 +885,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 showToast(`💬 New message from ${senderName}`, 'info', 3000);
             }
         } else if (payload.type === 'reaction') {
-            const tile = document.getElementById(`tile-${participant.sid}`) || elements.localParticipantTile;
-            showFloatingEmoji(payload.emoji, tile);
+            const remoteTile = (participant && participant.sid) ? document.getElementById(`tile-${participant.sid}`) : null;
+            const targetTile = remoteTile || elements.localParticipantTile;
+            showFloatingEmoji(payload.emoji, targetTile);
+            showToast(`${senderName} reacted with ${payload.emoji}`, 'info', 2500);
         } else if (payload.type === 'hand_raise') {
             const tile = document.getElementById(`tile-${participant.sid}`) || elements.localParticipantTile;
             updateHandRaisedUI(tile, payload.raised, senderName);
@@ -1153,28 +1175,85 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
+     * Trigger a burst of floating emojis streaming upwards
+     * @param {string} emoji - Emoji character to display
+     * @param {HTMLElement} [anchorElement] - Element to spawn emojis from (defaults to reactionsBtn or screen bottom center)
+     */
+    function triggerEmojiStream(emoji, anchorElement) {
+        if (!emoji) return;
+
+        let originX = window.innerWidth / 2;
+        let originY = window.innerHeight - 120;
+
+        if (anchorElement && typeof anchorElement.getBoundingClientRect === 'function') {
+            const rect = anchorElement.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+                originX = rect.left + (rect.width / 2);
+                originY = rect.top;
+            }
+        }
+
+        // Spawn a burst of 5 floating emojis with organic horizontal drift and staggered timings
+        const burstCount = 5;
+        for (let i = 0; i < burstCount; i++) {
+            setTimeout(() => {
+                const emojiEl = document.createElement('div');
+                emojiEl.className = 'floating-emoji';
+                emojiEl.textContent = emoji;
+
+                // Organic horizontal drift between -45px and +45px
+                const driftX = (Math.random() - 0.5) * 90;
+                // Random animation duration between 1.8s and 2.3s
+                const duration = (1.8 + Math.random() * 0.5).toFixed(2);
+                // Slight initial scale variation
+                const scale = (0.9 + Math.random() * 0.35).toFixed(2);
+
+                emojiEl.style.left = `${originX}px`;
+                emojiEl.style.top = `${originY}px`;
+                emojiEl.style.setProperty('--drift-x', `${driftX}px`);
+                emojiEl.style.setProperty('--duration', `${duration}s`);
+                emojiEl.style.fontSize = `${(2.6 * scale).toFixed(2)}rem`;
+
+                document.body.appendChild(emojiEl);
+
+                setTimeout(() => {
+                    emojiEl.remove();
+                }, parseFloat(duration) * 1000 + 100);
+            }, i * 75);
+        }
+    }
+
+    /**
+     * Show a temporary animated reaction badge on a participant's tile
+     */
+    function showTileReactionBadge(tileElement, emoji) {
+        if (!tileElement || !emoji) return;
+        const identityContainer = tileElement.querySelector('.user-identity');
+        if (!identityContainer) return;
+
+        // Remove any existing reaction badge
+        const existing = identityContainer.querySelector('.reaction-tile-badge');
+        if (existing) existing.remove();
+
+        const badge = document.createElement('span');
+        badge.className = 'reaction-tile-badge';
+        badge.textContent = emoji;
+        badge.title = `Reacted with ${emoji}`;
+        identityContainer.appendChild(badge);
+
+        // Auto remove badge after 3 seconds with smooth fade
+        setTimeout(() => {
+            badge.classList.add('badge-fade-out');
+            setTimeout(() => badge.remove(), 300);
+        }, 3000);
+    }
+
+    /**
      * Animate Floating Emoji Over Participant Video Tile (Screen position calculation)
      */
     function showFloatingEmoji(emoji, tileElement) {
-        const target = tileElement || elements.localParticipantTile || document.body;
-        const rect = target.getBoundingClientRect();
-
-        const emojiEl = document.createElement('div');
-        emojiEl.className = 'floating-emoji';
-        emojiEl.textContent = emoji;
-
-        // Position emoji at tile center on screen
-        const leftPos = rect.left + (rect.width / 2);
-        const topPos = rect.top + (rect.height / 2);
-
-        emojiEl.style.left = `${leftPos}px`;
-        emojiEl.style.top = `${topPos}px`;
-
-        document.body.appendChild(emojiEl);
-
-        setTimeout(() => {
-            emojiEl.remove();
-        }, 2500);
+        triggerEmojiStream(emoji, tileElement);
+        showTileReactionBadge(tileElement, emoji);
     }
 
     /**

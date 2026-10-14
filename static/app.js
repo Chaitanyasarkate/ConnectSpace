@@ -1,1037 +1,1302 @@
 /**
- * VISIONMEET - ENTERPRISE TWILIO PROGRAMMABLE VIDEO ENGINE
- * Features:
- * - Local Audio & Video Track hardware controls & Background Blur
- * - Screen Sharing (getDisplayMedia)
- * - Twilio LocalDataTrack Real-time Messaging (Chat, File Sharing, Typing Indicators)
- * - Animated Emoji Reactions & Raise Hand Signaling
- * - Recording Toggle & Call Duration Timer
- * - Picture in Picture (PiP)
- * - Admin Controls (Host Mute All & Mute Individual)
- * - Unread Message Badges & Notification Toasts
- * - Memory leak prevention & Track Detachment Auto Cleanup
+ * ConnectSpace Main Application UI Controller
  */
+document.addEventListener('DOMContentLoaded', () => {
+    // DOM Element References
+    const elements = {
+        // Status & Notices
+        connectionStatusBadge: document.getElementById('connection-status-badge'),
+        statusText: document.getElementById('status-text'),
+        twilioWarning: document.getElementById('twilio-warning'),
+        toastContainer: document.getElementById('toast-container'),
+        loadingOverlay: document.getElementById('loading-overlay'),
+        loadingMessage: document.getElementById('loading-message'),
 
-document.addEventListener("DOMContentLoaded", () => {
-    // ==========================================================================
-    // 1. GLOBAL STATE & REGISTRIES
-    // ==========================================================================
+        // Lobby View
+        lobbyContainer: document.getElementById('lobby-container'),
+        joinForm: document.getElementById('join-room-form'),
+        usernameInput: document.getElementById('username-input'),
+        roomInput: document.getElementById('room-input'),
+        joinBtn: document.getElementById('join-btn'),
+        localPreviewVideo: document.getElementById('local-preview-video'),
+        previewPlaceholder: document.getElementById('preview-placeholder'),
+        previewMicBtn: document.getElementById('preview-mic-btn'),
+        previewCamBtn: document.getElementById('preview-cam-btn'),
+        requestPermBtn: document.getElementById('request-perm-btn'),
 
-    let localAudioTrack = null;
-    let localVideoTrack = null;
-    let localDataTrack = null;
-    let screenTrack = null;
-    let activeRoom = null;
-    
-    // Registry of active participants: Map<sid, { participant, cardElement, tracks: Set<Track> }>
-    const participantRegistry = new Map();
+        // Active Call View
+        roomContainer: document.getElementById('room-container'),
+        currentRoomName: document.getElementById('current-room-name'),
+        callTimer: document.getElementById('call-timer'),
+        participantCount: document.getElementById('participant-count'),
+        videoGrid: document.getElementById('video-grid'),
 
-    let isMicMuted = false;
-    let isCamDisabled = false;
-    let isBlurEnabled = false;
-    let isScreenSharing = false;
-    let isHandRaised = false;
-    let isRecording = false;
-    let isHost = false;
+        // Local Participant Tile
+        localParticipantTile: document.getElementById('local-participant-tile'),
+        localVideo: document.getElementById('local-video'),
+        localVideoFallback: document.getElementById('local-video-fallback'),
+        localAvatarInitials: document.getElementById('local-avatar-initials'),
+        localUserName: document.getElementById('local-user-name'),
+        localAudioIndicator: document.getElementById('local-audio-indicator'),
 
+        // Call Metrics & View Header
+        toggleViewBtn: document.getElementById('toggle-view-btn'),
+        viewModeLabel: document.getElementById('view-mode-label'),
+        muteAllBtn: document.getElementById('mute-all-btn'),
+
+        // Control Bar
+        toggleMicBtn: document.getElementById('toggle-mic-btn'),
+        toggleCamBtn: document.getElementById('toggle-cam-btn'),
+        toggleScreenBtn: document.getElementById('toggle-screen-btn'),
+        toggleChatBtn: document.getElementById('toggle-chat-btn'),
+        unreadBadge: document.getElementById('unread-badge'),
+        handRaiseBtn: document.getElementById('hand-raise-btn'),
+        reactionsBtn: document.getElementById('reactions-btn'),
+        reactionsPicker: document.getElementById('reactions-picker'),
+        toggleCaptionsBtn: document.getElementById('toggle-captions-btn'),
+        toggleBlurBtn: document.getElementById('toggle-blur-btn'),
+        toggleFullscreenBtn: document.getElementById('toggle-fullscreen-btn'),
+        copyLinkBtn: document.getElementById('copy-link-btn'),
+        leaveBtn: document.getElementById('leave-btn'),
+
+        // Closed Captions Overlay Banner
+        captionOverlay: document.getElementById('caption-overlay'),
+        captionSpeaker: document.getElementById('caption-speaker'),
+        captionText: document.getElementById('caption-text'),
+
+        // In-Call Chat Drawer
+        chatPanel: document.getElementById('chat-panel'),
+        closeChatBtn: document.getElementById('close-chat-btn'),
+        chatMessages: document.getElementById('chat-messages'),
+        chatForm: document.getElementById('chat-form'),
+        chatInput: document.getElementById('chat-input')
+    };
+
+    // State Variables
+    let localPreviewStream = null;
+    let isPreviewMicOn = true;
+    let isPreviewCamOn = true;
+    let roomManager = null;
     let callTimerInterval = null;
-    let recTimerInterval = null;
-    let callSeconds = 0;
-    let recSeconds = 0;
+    let callStartTime = null;
+    let activeParticipants = new Map(); // Store remote participant tiles by SID
+    
+    // Phase 1 State
+    let isSharingScreen = false;
+    let isHandRaised = false;
+    let isChatOpen = false;
     let unreadCount = 0;
-    let typingTimeout = null;
+    let currentUsername = '';
 
-    // ==========================================================================
-    // 2. DOM ELEMENT REFERENCES
-    // ==========================================================================
+    // Phase 2 State
+    let isHost = false;
+    let isSpeakerView = false;
+    let currentSpotlightSid = null;
 
-    const toastContainer = document.getElementById("toastContainer");
-    const reactionCanvas = document.getElementById("reactionCanvas");
-    const statusBadge = document.getElementById("statusBadge");
-    const statusText = document.getElementById("statusText");
-    const recordingBadge = document.getElementById("recordingBadge");
-    const recTimer = document.getElementById("recTimer");
-    const onlineCounter = document.getElementById("onlineCounter");
-    const onlineCountText = document.getElementById("onlineCountText");
+    // Phase 3 State
+    let isCaptionsOn = false;
+    let isBackgroundBlurred = false;
+    let speechRecognizer = null;
+    let captionHideTimeout = null;
 
-    // Lobby Elements
-    const lobbyContainer = document.getElementById("lobbyContainer");
-    const previewVideo = document.getElementById("previewVideo");
-    const previewAvatar = document.getElementById("previewAvatar");
-    const previewAvatarInitials = document.getElementById("previewAvatarInitials");
-    const previewMicBtn = document.getElementById("previewMicBtn");
-    const previewCamBtn = document.getElementById("previewCamBtn");
-    const previewBlurBtn = document.getElementById("previewBlurBtn");
-    const joinForm = document.getElementById("joinForm");
-    const usernameInput = document.getElementById("usernameInput");
-    const roomInput = document.getElementById("roomInput");
-    const passwordInput = document.getElementById("passwordInput");
-    const isHostCheckbox = document.getElementById("isHostCheckbox");
-    const roomPresets = document.getElementById("roomPresets");
-    const joinBtn = document.getElementById("joinBtn");
-    const joinSpinner = document.getElementById("joinSpinner");
+    // Check Backend Health & Twilio Config Status on Load
+    checkBackendHealth();
 
-    // Active Meeting Elements
-    const roomContainer = document.getElementById("roomContainer");
-    const currentRoomName = document.getElementById("currentRoomName");
-    const callTimer = document.getElementById("callTimer");
-    const participantCountText = document.getElementById("participantCountText");
-    const participantGrid = document.getElementById("participantGrid");
-
-    // Side Drawer Elements
-    const sideDrawer = document.getElementById("sideDrawer");
-    const tabChatBtn = document.getElementById("tabChatBtn");
-    const tabParticipantsBtn = document.getElementById("tabParticipantsBtn");
-    const closeDrawerBtn = document.getElementById("closeDrawerBtn");
-    const chatTabContent = document.getElementById("chatTabContent");
-    const participantsTabContent = document.getElementById("participantsTabContent");
-    const chatFeed = document.getElementById("chatFeed");
-    const typingIndicator = document.getElementById("typingIndicator");
-    const typingUserText = document.getElementById("typingUserText");
-    const chatForm = document.getElementById("chatForm");
-    const messageInput = document.getElementById("messageInput");
-    const fileInput = document.getElementById("fileInput");
-    const attachFileBtn = document.getElementById("attachFileBtn");
-    const adminControlsPanel = document.getElementById("adminControlsPanel");
-    const muteAllBtn = document.getElementById("muteAllBtn");
-    const drawerParticipantCount = document.getElementById("drawerParticipantCount");
-    const participantsList = document.getElementById("participantsList");
-
-    // Floating Dock Elements
-    const micBtn = document.getElementById("micBtn");
-    const camBtn = document.getElementById("camBtn");
-    const blurBtn = document.getElementById("blurBtn");
-    const screenShareBtn = document.getElementById("screenShareBtn");
-    const handRaiseBtn = document.getElementById("handRaiseBtn");
-    const emojiBtn = document.getElementById("emojiBtn");
-    const emojiBar = document.getElementById("emojiBar");
-    const recordBtn = document.getElementById("recordBtn");
-    const pipBtn = document.getElementById("pipBtn");
-    const shareBtn = document.getElementById("shareBtn");
-    const chatToggleBtn = document.getElementById("chatToggleBtn");
-    const unreadBadge = document.getElementById("unreadBadge");
-    const leaveBtn = document.getElementById("leaveBtn");
-
-    // ==========================================================================
-    // 3. TOAST NOTIFICATIONS & EMOJI ANIMATIONS
-    // ==========================================================================
-
-    function showToast(message, type = "info", duration = 4000) {
-        if (!toastContainer) return;
-        const toast = document.createElement("div");
-        toast.className = `toast toast-${type}`;
-        const icons = { info: "fa-circle-info", success: "fa-circle-check", warning: "fa-triangle-exclamation", error: "fa-circle-xmark" };
-        toast.innerHTML = `<i class="fa-solid ${icons[type] || icons.info}"></i><span>${escapeHTML(message)}</span>`;
-        toastContainer.appendChild(toast);
-        setTimeout(() => {
-            toast.classList.add("toast-out");
-            toast.addEventListener("animationend", () => toast.remove());
-        }, duration);
+    // Auto-fill room name from URL query parameter if present
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomParam = urlParams.get('room');
+    if (roomParam) {
+        elements.roomInput.value = roomParam;
     }
 
-    function spawnFloatingEmoji(emoji) {
-        if (!reactionCanvas) return;
-        const el = document.createElement("div");
-        el.className = "floating-emoji";
-        el.textContent = emoji;
-        el.style.left = `${Math.floor(Math.random() * 80) + 10}%`;
-        reactionCanvas.appendChild(el);
-        setTimeout(() => el.remove(), 3000);
-    }
+    // Auto start camera preview
+    startLocalPreview();
 
-    function escapeHTML(str) {
-        const div = document.createElement("div");
-        div.textContent = str || "";
-        return div.innerHTML;
-    }
+    // Event Listeners
+    elements.requestPermBtn.addEventListener('click', startLocalPreview);
+    elements.previewMicBtn.addEventListener('click', togglePreviewMic);
+    elements.previewCamBtn.addEventListener('click', togglePreviewCam);
+    elements.joinForm.addEventListener('submit', handleJoinRoomSubmit);
+    elements.toggleMicBtn.addEventListener('click', handleToggleMic);
+    elements.toggleCamBtn.addEventListener('click', handleToggleCam);
+    elements.toggleScreenBtn.addEventListener('click', handleToggleScreenShare);
+    elements.toggleChatBtn.addEventListener('click', toggleChatDrawer);
+    elements.closeChatBtn.addEventListener('click', toggleChatDrawer);
+    elements.chatForm.addEventListener('submit', handleSendChatMessage);
+    elements.handRaiseBtn.addEventListener('click', handleToggleHandRaise);
+    elements.reactionsBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleReactionsPicker(e);
+    });
 
-    function getInitials(name) {
-        if (!name || typeof name !== "string") return "VM";
-        const clean = name.trim();
-        if (!clean) return "VM";
-        const parts = clean.split(/\s+/);
-        if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-        return clean.slice(0, 2).toUpperCase();
-    }
+    // Phase 2 Listeners
+    elements.toggleViewBtn.addEventListener('click', toggleSpeakerView);
+    elements.muteAllBtn.addEventListener('click', handleHostMuteAll);
 
-    // ==========================================================================
-    // 4. LOCAL MEDIA TRACKS & PREVIEW INITIALIZATION
-    // ==========================================================================
+    // Phase 3 Listeners
+    elements.toggleCaptionsBtn.addEventListener('click', toggleCaptions);
+    elements.toggleBlurBtn.addEventListener('click', toggleBackgroundBlur);
 
-    async function initLocalPreview() {
-        try {
-            if (typeof Twilio === "undefined" || !Twilio.Video) {
-                showToast("Twilio Video SDK failed to load.", "error");
-                return;
+    // Reaction Emoji Event Delegation
+    elements.reactionsPicker.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const btn = e.target.closest('.reaction-emoji-btn');
+        if (btn) {
+            const emoji = btn.getAttribute('data-emoji') || btn.dataset.emoji || btn.textContent.trim();
+            if (emoji) {
+                sendEmojiReaction(emoji);
             }
-
-            // Create Local DataTrack for real-time chat & signals
-            localDataTrack = new Twilio.Video.LocalDataTrack();
-
-            try {
-                localVideoTrack = await Twilio.Video.createLocalVideoTrack({ width: { ideal: 1280 }, height: { ideal: 720 } });
-            } catch (vErr) {
-                console.warn("Camera fallback:", vErr);
-                showToast("Camera device unavailable.", "warning");
-            }
-
-            try {
-                localAudioTrack = await Twilio.Video.createLocalAudioTrack({ echoCancellation: true, noiseSuppression: true });
-            } catch (aErr) {
-                console.warn("Mic fallback:", aErr);
-                showToast("Microphone device unavailable.", "warning");
-            }
-
-            if (localVideoTrack && previewVideo) {
-                localVideoTrack.attach(previewVideo);
-                hidePreviewAvatar();
-            } else {
-                showPreviewAvatar(usernameInput ? usernameInput.value : "User");
-            }
-
-            showToast("Camera & Microphone ready.", "success");
-        } catch (err) {
-            console.error("Local media init error:", err);
-            showPreviewAvatar(usernameInput ? usernameInput.value : "User");
-        }
-    }
-
-    function showPreviewAvatar(name) {
-        if (previewAvatar && previewAvatarInitials) {
-            previewAvatarInitials.textContent = getInitials(name);
-            previewAvatar.classList.remove("hidden");
-        }
-    }
-
-    function hidePreviewAvatar() {
-        if (previewAvatar) previewAvatar.classList.add("hidden");
-    }
-
-    // Preview Mic / Cam / Blur Buttons
-    if (previewMicBtn) {
-        previewMicBtn.addEventListener("click", () => {
-            isMicMuted = !isMicMuted;
-            if (localAudioTrack) {
-                if (isMicMuted) {
-                    localAudioTrack.disable();
-                    previewMicBtn.classList.add("btn-off");
-                    previewMicBtn.innerHTML = `<i class="fa-solid fa-microphone-slash"></i>`;
-                } else {
-                    localAudioTrack.enable();
-                    previewMicBtn.classList.remove("btn-off");
-                    previewMicBtn.innerHTML = `<i class="fa-solid fa-microphone"></i>`;
-                }
-            }
-        });
-    }
-
-    if (previewCamBtn) {
-        previewCamBtn.addEventListener("click", () => {
-            isCamDisabled = !isCamDisabled;
-            if (localVideoTrack) {
-                if (isCamDisabled) {
-                    localVideoTrack.disable();
-                    previewCamBtn.classList.add("btn-off");
-                    previewCamBtn.innerHTML = `<i class="fa-solid fa-video-slash"></i>`;
-                    showPreviewAvatar(usernameInput.value);
-                } else {
-                    localVideoTrack.enable();
-                    previewCamBtn.classList.remove("btn-off");
-                    previewCamBtn.innerHTML = `<i class="fa-solid fa-video"></i>`;
-                    hidePreviewAvatar();
-                }
-            }
-        });
-    }
-
-    if (previewBlurBtn) {
-        previewBlurBtn.addEventListener("click", () => {
-            isBlurEnabled = !isBlurEnabled;
-            if (previewVideo) previewVideo.classList.toggle("blurred", isBlurEnabled);
-            previewBlurBtn.classList.toggle("btn-active", isBlurEnabled);
-            showToast(isBlurEnabled ? "Background blur preview enabled" : "Background blur disabled", "info");
-        });
-    }
-
-    if (roomPresets) {
-        roomPresets.addEventListener("click", (e) => {
-            const chip = e.target.closest(".preset-chip");
-            if (chip) {
-                document.querySelectorAll(".preset-chip").forEach((c) => c.classList.remove("active"));
-                chip.classList.add("active");
-                roomInput.value = chip.getAttribute("data-room");
-            }
-        });
-    }
-
-    initLocalPreview();
-
-    // ==========================================================================
-    // 5. JOIN ROOM & AUTHENTICATION
-    // ==========================================================================
-
-    joinForm.addEventListener("submit", async (e) => {
-        e.preventDefault();
-
-        const username = usernameInput.value.trim();
-        const roomName = roomInput.value.trim() || "general-room";
-        const password = passwordInput ? passwordInput.value.trim() : "";
-        isHost = isHostCheckbox ? isHostCheckbox.checked : false;
-
-        if (!username) {
-            showToast("Please enter a display name.", "warning");
-            return;
-        }
-
-        setJoinLoading(true);
-        updateStatus("connecting", "Authenticating token...");
-
-        try {
-            // 1. Fetch Token from Flask API
-            const res = await fetch("/login", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ username, room: roomName, password, is_host: isHost })
-            });
-
-            const data = await res.json();
-            if (!res.ok || !data.success) {
-                throw new Error(data.error || data.message || "Authentication failed.");
-            }
-
-            const token = data.data.token;
-            updateStatus("connecting", `Joining room: ${roomName}...`);
-
-            // 2. Prepare tracks to publish
-            const tracksToPublish = [];
-            if (localAudioTrack) tracksToPublish.push(localAudioTrack);
-            if (localVideoTrack) tracksToPublish.push(localVideoTrack);
-            if (localDataTrack) tracksToPublish.push(localDataTrack);
-
-            // 3. Connect to Twilio Video Room
-            const room = await Twilio.Video.connect(token, {
-                name: roomName,
-                tracks: tracksToPublish,
-                dominantSpeaker: true,
-                networkQuality: { local: 1, remote: 1 }
-            });
-
-            setupRoom(room, username);
-        } catch (err) {
-            console.error("Room Join Error:", err);
-            showToast(err.message || "Failed to join video room.", "error");
-            updateStatus("disconnected", "Disconnected");
-            setJoinLoading(false);
         }
     });
 
-    function setJoinLoading(loading) {
-        if (!joinBtn) return;
-        joinBtn.disabled = loading;
-        if (joinSpinner) joinSpinner.classList.toggle("hidden", !loading);
-        joinBtn.querySelector(".btn-text").textContent = loading ? "Connecting..." : "Enter Meeting";
-    }
-
-    // ==========================================================================
-    // 6. ROOM LIFECYCLE & DATATRACK SIGNALING
-    // ==========================================================================
-
-    function setupRoom(room, localUsername) {
-        activeRoom = room;
-        console.log(`Connected to room '${room.name}' as '${localUsername}'`);
-
-        updateStatus("connected", `Connected: ${room.name}`);
-        showToast(`Joined meeting "${room.name}"`, "success");
-
-        // View Transition
-        lobbyContainer.classList.add("hidden");
-        roomContainer.classList.remove("hidden");
-        if (onlineCounter) onlineCounter.classList.remove("hidden");
-        if (currentRoomName) currentRoomName.textContent = room.name;
-
-        if (isHost && adminControlsPanel) {
-            adminControlsPanel.classList.remove("hidden");
-        }
-
-        participantGrid.innerHTML = "";
-        participantRegistry.clear();
-
-        // Render Local Participant
-        renderParticipant(room.localParticipant, localUsername, true);
-
-        // Render Existing Remote Participants
-        room.participants.forEach((p) => renderParticipant(p, p.identity, false));
-
-        // Event: Participant Connected
-        room.on("participantConnected", (p) => {
-            showToast(`${p.identity} joined the meeting`, "info");
-            renderParticipant(p, p.identity, false);
-            updateParticipantCounts();
-            updateGrid();
-        });
-
-        // Event: Participant Disconnected
-        room.on("participantDisconnected", (p) => {
-            showToast(`${p.identity} left the meeting`, "warning");
-            cleanupParticipant(p.sid);
-            updateParticipantCounts();
-            updateGrid();
-        });
-
-        // Event: Dominant Speaker Highlight
-        room.on("dominantSpeakerChanged", (p) => {
-            document.querySelectorAll(".video-card").forEach((c) => c.classList.remove("speaking"));
-            if (p) {
-                const card = document.getElementById(`participant-${p.sid}`);
-                if (card) card.classList.add("speaking");
+    // Close reactions picker when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!elements.reactionsPicker.classList.contains('hidden')) {
+            if (!elements.reactionsPicker.contains(e.target) && !elements.reactionsBtn.contains(e.target)) {
+                elements.reactionsPicker.classList.add('hidden');
             }
-        });
-
-        // Event: Reconnect Lifecycle
-        room.on("reconnecting", () => updateStatus("connecting", "Reconnecting..."));
-        room.on("reconnected", () => updateStatus("connected", `Connected: ${room.name}`));
-        room.on("disconnected", (r, err) => onRoomDisconnected(err));
-
-        updateParticipantCounts();
-        updateGrid();
-        startCallTimer();
-        setJoinLoading(false);
-    }
-
-    // ==========================================================================
-    // 7. PARTICIPANT RENDERING & TRACK SUBSCRIPTIONS
-    // ==========================================================================
-
-    function renderParticipant(participant, identity, isLocal = false) {
-        const sid = participant.sid || "local";
-        const cardId = `participant-${sid}`;
-        if (document.getElementById(cardId)) return;
-
-        const card = document.createElement("div");
-        card.id = cardId;
-        card.className = `video-card ${isLocal ? "local-card" : ""}`;
-
-        card.innerHTML = `
-            <div class="video-container" id="video-container-${cardId}"></div>
-            <div class="video-avatar-fallback hidden" id="avatar-${cardId}">
-                <div class="avatar-circle">${getInitials(identity)}</div>
-            </div>
-            <div class="card-user-label">
-                <i class="fa-solid fa-user"></i>
-                <span>${escapeHTML(identity)} ${isLocal ? "(You)" : ""}</span>
-            </div>
-            <div class="card-audio-status" id="audio-status-${cardId}">
-                <i class="fa-solid fa-microphone"></i>
-            </div>
-            <div class="card-hand-indicator hidden" id="hand-${cardId}">
-                ✋ Raised Hand
-            </div>
-        `;
-
-        participantGrid.appendChild(card);
-        const container = card.querySelector(`#video-container-${cardId}`);
-        const avatarEl = card.querySelector(`#avatar-${cardId}`);
-        const attachedTracks = new Set();
-
-        participantRegistry.set(sid, { participant, cardElement: card, tracks: attachedTracks });
-
-        // Function to subscribe to Media & DataTracks
-        const subscribeTrack = (track) => {
-            if (!track) return;
-
-            if (track.kind === "data") {
-                // Listen for DataTrack Signals (Chat, Emojis, Raise Hand, Admin)
-                track.on("message", (data) => {
-                    try {
-                        const signal = JSON.parse(data);
-                        handleIncomingSignal(signal, participant);
-                    } catch (e) {
-                        console.warn("Failed to parse DataTrack signal:", e);
-                    }
-                });
-                return;
-            }
-
-            const mediaEl = track.attach();
-            container.appendChild(mediaEl);
-            attachedTracks.add(track);
-
-            if (track.kind === "video") {
-                avatarEl.classList.add("hidden");
-                if (isBlurEnabled && isLocal) mediaEl.classList.add("blurred");
-                if (mediaEl.play) mediaEl.play().catch(() => {});
-            }
-        };
-
-        const unsubscribeTrack = (track) => {
-            if (!track || track.kind === "data") return;
-            const elements = track.detach();
-            elements.forEach((el) => { el.pause(); el.srcObject = null; el.remove(); });
-            attachedTracks.delete(track);
-            if (track.kind === "video") avatarEl.classList.remove("hidden");
-        };
-
-        // Attach existing published tracks
-        participant.tracks.forEach((pub) => {
-            if (pub.isSubscribed && pub.track) subscribeTrack(pub.track);
-        });
-
-        participant.on("trackSubscribed", (track) => subscribeTrack(track));
-        participant.on("trackUnsubscribed", (track) => unsubscribeTrack(track));
-
-        participant.on("trackDisabled", (pub) => {
-            const kind = pub.kind || (pub.track && pub.track.kind);
-            if (kind === "audio") updateAudioIndicator(cardId, false);
-            else if (kind === "video") avatarEl.classList.remove("hidden");
-        });
-
-        participant.on("trackEnabled", (pub) => {
-            const kind = pub.kind || (pub.track && pub.track.kind);
-            if (kind === "audio") updateAudioIndicator(cardId, true);
-            else if (kind === "video") avatarEl.classList.add("hidden");
-        });
-
-        if (isLocal && isMicMuted) updateAudioIndicator(cardId, false);
-
-        updateParticipantCounts();
-        updateDrawerList();
-        updateGrid();
-    }
-
-    function cleanupParticipant(sid) {
-        const record = participantRegistry.get(sid);
-        if (record) {
-            record.tracks.forEach((track) => {
-                try {
-                    track.detach().forEach((el) => { el.pause(); el.srcObject = null; el.remove(); });
-                } catch (e) {}
-            });
-            if (record.cardElement) record.cardElement.remove();
-            participantRegistry.delete(sid);
         }
-        updateDrawerList();
+    });
+
+    // Fullscreen Listeners
+    if (elements.toggleFullscreenBtn) {
+        elements.toggleFullscreenBtn.addEventListener('click', toggleAppFullscreen);
+    }
+    
+    // Bind Local Tile Fullscreen Button
+    const localFullscreenBtn = elements.localParticipantTile.querySelector('.tile-fullscreen-btn');
+    if (localFullscreenBtn) {
+        localFullscreenBtn.addEventListener('click', () => toggleTileFullscreen(elements.localParticipantTile));
     }
 
-    function updateAudioIndicator(cardId, isEnabled) {
-        const audioStatus = document.getElementById(`audio-status-${cardId}`);
-        if (audioStatus) {
-            audioStatus.classList.toggle("muted", !isEnabled);
-            audioStatus.innerHTML = `<i class="fa-solid fa-microphone${isEnabled ? "" : "-slash"}"></i>`;
-        }
-    }
+    // Sync fullscreen button icon on native ESC key or change
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
 
-    // ==========================================================================
-    // 8. REAL-TIME SIGNALING ROUTER (DATATRACK)
-    // ==========================================================================
+    elements.copyLinkBtn.addEventListener('click', handleCopyInviteLink);
+    elements.leaveBtn.addEventListener('click', handleLeaveRoom);
 
-    function sendSignal(type, payload = {}) {
-        if (!localDataTrack || !activeRoom) return;
-        const data = JSON.stringify({ type, sender: usernameInput.value, senderSid: activeRoom.localParticipant.sid, timestamp: new Date().toISOString(), ...payload });
+    /**
+     * Check backend health and Twilio credential status
+     */
+    async function checkBackendHealth() {
         try {
-            localDataTrack.send(data);
-        } catch (e) {
-            console.warn("Signal send error:", e);
+            const res = await fetch('/api/health');
+            const data = await res.json();
+            if (!data.twilio_configured) {
+                elements.twilioWarning.classList.remove('hidden');
+            }
+        } catch (err) {
+            console.warn('Backend health check failed:', err);
         }
     }
 
-    function handleIncomingSignal(signal, participant) {
-        console.log("Received DataTrack signal:", signal);
+    /**
+     * Start local camera and microphone preview in Lobby
+     */
+    async function startLocalPreview() {
+        try {
+            if (localPreviewStream) {
+                localPreviewStream.getTracks().forEach(track => track.stop());
+            }
 
-        switch (signal.type) {
-            case "chat":
-                appendChatMessage(signal.sender, signal.text, false, signal.timestamp);
-                if (sideDrawer.classList.contains("hidden") || !chatTabContent.classList.contains("hidden")) {
-                    incrementUnreadBadge();
-                }
-                break;
+            localPreviewStream = await navigator.mediaDevices.getUserMedia({
+                video: { width: 640, height: 480 },
+                audio: true
+            });
 
-            case "file":
-                appendFileMessage(signal.sender, signal.fileName, signal.fileData, false);
-                break;
+            elements.localPreviewVideo.srcObject = localPreviewStream;
+            elements.localPreviewVideo.style.display = 'block';
+            elements.previewPlaceholder.style.display = 'none';
 
-            case "typing":
-                showTypingIndicator(signal.sender);
-                break;
-
-            case "reaction":
-                spawnFloatingEmoji(signal.emoji);
-                break;
-
-            case "hand_raise":
-                toggleParticipantHand(signal.senderSid, signal.raised);
-                showToast(`${signal.sender} ${signal.raised ? "raised their hand ✋" : "lowered their hand"}`, "info");
-                break;
-
-            case "admin_mute":
-                if (signal.targetSid === activeRoom.localParticipant.sid || signal.targetSid === "all") {
-                    muteLocalAudio();
-                    showToast("You were muted by the meeting host.", "warning");
-                }
-                break;
-
-            case "record_toggle":
-                toggleRecordingUI(signal.isRecording);
-                break;
+            showToast('Camera and microphone ready', 'success', 3000);
+        } catch (err) {
+            console.warn('Camera/Mic permission error:', err);
+            elements.localPreviewVideo.style.display = 'none';
+            elements.previewPlaceholder.style.display = 'flex';
+            showToast('Camera/Microphone permission denied or device not found.', 'error', 5000);
         }
     }
 
-    // ==========================================================================
-    // 9. ADVANCED FEATURES: SCREEN SHARE, BLUR, PIP, RECORDING
-    // ==========================================================================
+    /**
+     * Toggle Preview Mic
+     */
+    function togglePreviewMic() {
+        if (!localPreviewStream) return;
+        const audioTracks = localPreviewStream.getAudioTracks();
+        if (audioTracks.length > 0) {
+            isPreviewMicOn = !isPreviewMicOn;
+            audioTracks[0].enabled = isPreviewMicOn;
+            elements.previewMicBtn.classList.toggle('active', isPreviewMicOn);
+            elements.previewMicBtn.classList.toggle('muted', !isPreviewMicOn);
+            elements.previewMicBtn.querySelector('i').className = isPreviewMicOn ? 'fa-solid fa-microphone' : 'fa-solid fa-microphone-slash';
+        }
+    }
 
-    // Screen Sharing (getDisplayMedia)
-    if (screenShareBtn) {
-        screenShareBtn.addEventListener("click", async () => {
-            if (!activeRoom) return;
+    /**
+     * Toggle Preview Camera
+     */
+    function togglePreviewCam() {
+        if (!localPreviewStream) return;
+        const videoTracks = localPreviewStream.getVideoTracks();
+        if (videoTracks.length > 0) {
+            isPreviewCamOn = !isPreviewCamOn;
+            videoTracks[0].enabled = isPreviewCamOn;
+            elements.previewCamBtn.classList.toggle('active', isPreviewCamOn);
+            elements.previewCamBtn.classList.toggle('off', !isPreviewCamOn);
+            elements.previewCamBtn.querySelector('i').className = isPreviewCamOn ? 'fa-solid fa-video' : 'fa-solid fa-video-slash';
+            elements.localPreviewVideo.style.display = isPreviewCamOn ? 'block' : 'none';
+            elements.previewPlaceholder.style.display = isPreviewCamOn ? 'none' : 'flex';
+        }
+    }
 
-            if (isScreenSharing) {
-                stopScreenShare();
+    /**
+     * Form submit handler for joining room
+     */
+    async function handleJoinRoomSubmit(e) {
+        e.preventDefault();
+
+        const username = elements.usernameInput.value.trim();
+        const roomName = elements.roomInput.value.trim();
+
+        if (!username || !roomName) {
+            showToast('Please enter both your name and room name.', 'error');
+            return;
+        }
+
+        // Stop lobby preview stream before room connection
+        if (localPreviewStream) {
+            localPreviewStream.getTracks().forEach(track => track.stop());
+            localPreviewStream = null;
+        }
+
+        currentUsername = username;
+        showLoading(true, 'Connecting to Twilio Room...');
+
+        try {
+            // Instantiate Room Manager with callbacks
+            roomManager = new TwilioRoomManager({
+                onParticipantJoined: handleRemoteParticipantJoined,
+                onParticipantLeft: handleRemoteParticipantLeft,
+                onTrackSubscribed: handleRemoteTrackSubscribed,
+                onTrackUnsubscribed: handleRemoteTrackUnsubscribed,
+                onDataMessage: handleIncomingDataMessage,
+                onScreenShareEnded: handleScreenShareEnded,
+                onDominantSpeakerChanged: handleDominantSpeakerChanged,
+                onDisconnected: handleRoomDisconnected
+            });
+
+            // 1. Fetch JWT Token from Flask API
+            const tokenData = await roomManager.fetchToken(username, roomName);
+
+            // 2. Connect to Twilio Room
+            const room = await roomManager.connectRoom(tokenData.token, roomName);
+
+            // Host determination: First participant in room becomes Host
+            isHost = (room.participants.size === 0);
+
+            // 3. Setup Local Participant UI
+            setupLocalUserUI(username, room.localParticipant);
+
+            // 4. Transition Views
+            elements.lobbyContainer.classList.add('hidden');
+            elements.roomContainer.classList.remove('hidden');
+            elements.currentRoomName.textContent = roomName;
+
+            if (isHost) {
+                elements.muteAllBtn.classList.remove('hidden');
             } else {
-                try {
-                    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-                    const screenVideoTrack = stream.getVideoTracks()[0];
-                    screenTrack = new Twilio.Video.LocalVideoTrack(screenVideoTrack);
+                elements.muteAllBtn.classList.add('hidden');
+            }
+            
+            updateConnectionStatus(true, `Connected to ${roomName}`);
+            startCallTimer();
+            updateParticipantCount();
 
-                    await activeRoom.localParticipant.publishTrack(screenTrack);
-                    isScreenSharing = true;
-                    screenShareBtn.classList.add("btn-active");
-                    showToast("Screen presentation started.", "success");
+            showToast(isHost ? `Joined room "${roomName}" as HOST 👑` : `Joined room "${roomName}"`, 'success');
 
-                    // Handle user clicking native browser 'Stop sharing' button
-                    screenVideoTrack.onended = () => stopScreenShare();
-                } catch (err) {
-                    console.error("Screen Share error:", err);
-                    showToast("Screen sharing was cancelled or denied.", "warning");
-                }
+        } catch (err) {
+            console.error('Failed to join room:', err);
+            showToast(err.message || 'Failed to join video room.', 'error', 6000);
+            // Restart preview if connection fails
+            startLocalPreview();
+        } finally {
+            showLoading(false);
+        }
+    }
+
+    /**
+     * Setup Local Participant Video & UI Controls
+     */
+    function setupLocalUserUI(username, localParticipant) {
+        elements.localUserName.textContent = username;
+        elements.localAvatarInitials.textContent = getInitials(username);
+
+        // Attach local video track
+        localParticipant.videoTracks.forEach(publication => {
+            if (publication.track) {
+                publication.track.attach(elements.localVideo);
+                elements.localVideo.style.display = 'block';
+                elements.localVideoFallback.classList.add('hidden');
             }
         });
-    }
 
-    function stopScreenShare() {
-        if (screenTrack && activeRoom) {
-            activeRoom.localParticipant.unpublishTrack(screenTrack);
-            screenTrack.stop();
-            screenTrack = null;
+        // Append Host Badge if local user is host
+        if (isHost) {
+            const identityContainer = elements.localParticipantTile.querySelector('.user-identity');
+            if (identityContainer && !identityContainer.querySelector('.badge-host')) {
+                const hostBadge = document.createElement('span');
+                hostBadge.className = 'badge-host';
+                hostBadge.innerHTML = '<i class="fa-solid fa-crown"></i> HOST';
+                identityContainer.appendChild(hostBadge);
+            }
         }
-        isScreenSharing = false;
-        if (screenShareBtn) screenShareBtn.classList.remove("btn-active");
-        showToast("Screen presentation stopped.", "info");
+
+        // Apply initial mic/cam preview choices if needed
+        if (!isPreviewMicOn) {
+            roomManager.toggleAudio();
+            updateMicButtonUI(true);
+        }
+        if (!isPreviewCamOn) {
+            roomManager.toggleVideo();
+            updateCamButtonUI(true);
+        }
     }
 
-    // Background Blur Toggle
-    if (blurBtn) {
-        blurBtn.addEventListener("click", () => {
-            isBlurEnabled = !isBlurEnabled;
-            blurBtn.classList.toggle("btn-active", isBlurEnabled);
+    /**
+     * Remote Participant Joined
+     */
+    function handleRemoteParticipantJoined(participant) {
+        showToast(`${participant.identity} joined the room.`, 'info');
 
-            const localVideo = document.querySelector("#participant-local video");
-            if (localVideo) localVideo.classList.toggle("blurred", isBlurEnabled);
+        // Check if tile already exists
+        if (document.getElementById(`tile-${participant.sid}`)) return;
 
-            showToast(isBlurEnabled ? "Background blur enabled." : "Background blur disabled.", "info");
+        // Create Remote Participant Tile
+        const tile = document.createElement('div');
+        tile.id = `tile-${participant.sid}`;
+        tile.className = 'participant-tile';
+
+        const hostActionsHTML = isHost ? `
+            <div class="host-tile-actions">
+                <button type="button" class="host-action-btn host-mute-btn" data-sid="${participant.sid}" title="Mute Participant">
+                    <i class="fa-solid fa-microphone-slash"></i>
+                </button>
+                <button type="button" class="host-action-btn host-kick-btn" data-sid="${participant.sid}" data-name="${escapeHtml(participant.identity)}" title="Kick Participant">
+                    <i class="fa-solid fa-user-xmark"></i>
+                </button>
+            </div>
+        ` : '';
+
+        tile.innerHTML = `
+            <div class="video-wrapper" id="wrapper-${participant.sid}">
+                <div id="fallback-${participant.sid}" class="avatar-fallback">
+                    <div class="avatar-circle">${getInitials(participant.identity)}</div>
+                </div>
+            </div>
+            <div class="tile-bar">
+                <div class="user-identity">
+                    <span>${escapeHtml(participant.identity)}</span>
+                    ${hostActionsHTML}
+                </div>
+                <div class="media-indicators">
+                    <button type="button" class="icon-btn-sm tile-fullscreen-btn" title="Expand Fullscreen">
+                        <i class="fa-solid fa-expand"></i>
+                    </button>
+                    <span id="mic-indicator-${participant.sid}" class="indicator mic-on">
+                        <i class="fa-solid fa-microphone"></i>
+                    </span>
+                </div>
+            </div>
+        `;
+
+        elements.videoGrid.appendChild(tile);
+        activeParticipants.set(participant.sid, tile);
+
+        // Bind Fullscreen Button
+        const fsBtn = tile.querySelector('.tile-fullscreen-btn');
+        if (fsBtn) {
+            fsBtn.addEventListener('click', () => toggleTileFullscreen(tile));
+        }
+
+        // Bind Host Action Buttons if present
+        if (isHost) {
+            const muteBtn = tile.querySelector('.host-mute-btn');
+            const kickBtn = tile.querySelector('.host-kick-btn');
+            if (muteBtn) muteBtn.addEventListener('click', () => handleHostMuteUser(participant.sid, participant.identity));
+            if (kickBtn) kickBtn.addEventListener('click', () => handleHostKickUser(participant.sid, participant.identity));
+        }
+
+        updateParticipantCount();
+        updateGridLayout();
+    }
+
+    /**
+     * Remote Participant Left
+     */
+    function handleRemoteParticipantLeft(participant) {
+        showToast(`${participant.identity} left the room.`, 'info');
+
+        const tile = document.getElementById(`tile-${participant.sid}`);
+        if (tile) {
+            tile.remove();
+            activeParticipants.delete(participant.sid);
+            updateParticipantCount();
+            updateGridLayout();
+        }
+    }
+
+    /**
+     * Remote Track Subscribed (Video / Audio attached)
+     */
+    function handleRemoteTrackSubscribed(track, participant) {
+        const wrapper = document.getElementById(`wrapper-${participant.sid}`);
+        const fallback = document.getElementById(`fallback-${participant.sid}`);
+
+        if (track.kind === 'video') {
+            const videoEl = track.attach();
+            videoEl.id = `video-${track.sid}`;
+            if (wrapper) {
+                wrapper.appendChild(videoEl);
+                if (fallback) fallback.classList.add('hidden');
+            }
+        } else if (track.kind === 'audio') {
+            const audioEl = track.attach();
+            audioEl.id = `audio-${track.sid}`;
+            if (wrapper) wrapper.appendChild(audioEl);
+        }
+    }
+
+    /**
+     * Remote Track Unsubscribed (Removed)
+     */
+    function handleRemoteTrackUnsubscribed(track, participant) {
+        const element = document.getElementById(`${track.kind}-${track.sid}`);
+        if (element) {
+            element.remove();
+        }
+
+        if (track.kind === 'video') {
+            const fallback = document.getElementById(`fallback-${participant.sid}`);
+            if (fallback) fallback.classList.remove('hidden');
+        }
+    }
+
+    /**
+     * Mute / Unmute Microphone Button Click
+     */
+    function handleToggleMic() {
+        if (!roomManager) return;
+        const isMuted = roomManager.toggleAudio();
+        updateMicButtonUI(isMuted);
+    }
+
+    function updateMicButtonUI(isMuted) {
+        elements.toggleMicBtn.classList.toggle('muted', isMuted);
+        elements.toggleMicBtn.querySelector('i').className = isMuted ? 'fa-solid fa-microphone-slash' : 'fa-solid fa-microphone';
+        elements.localAudioIndicator.className = `indicator ${isMuted ? 'mic-off' : 'mic-on'}`;
+        elements.localAudioIndicator.querySelector('i').className = isMuted ? 'fa-solid fa-microphone-slash' : 'fa-solid fa-microphone';
+    }
+
+    /**
+     * Toggle Camera On / Off Button Click
+     */
+    function handleToggleCam() {
+        if (!roomManager) return;
+        const isOff = roomManager.toggleVideo();
+        updateCamButtonUI(isOff);
+    }
+
+    function updateCamButtonUI(isOff) {
+        elements.toggleCamBtn.classList.toggle('off', isOff);
+        elements.toggleCamBtn.querySelector('i').className = isOff ? 'fa-solid fa-video-slash' : 'fa-solid fa-video';
+        elements.localVideoFallback.classList.toggle('hidden', !isOff);
+    }
+
+    /**
+     * Copy Room Invite Link
+     */
+    function handleCopyInviteLink() {
+        const roomName = elements.currentRoomName.textContent;
+        const inviteUrl = `${window.location.origin}/?room=${encodeURIComponent(roomName)}`;
+
+        navigator.clipboard.writeText(inviteUrl).then(() => {
+            showToast('Room link copied to clipboard!', 'success');
+        }).catch(() => {
+            showToast(`Room Name: ${roomName}`, 'info');
         });
     }
 
-    // Picture in Picture (PiP)
-    if (pipBtn) {
-        pipBtn.addEventListener("click", async () => {
-            try {
-                const firstVideo = document.querySelector(".video-card video");
-                if (firstVideo && document.pictureInPictureEnabled) {
-                    if (document.pictureInPictureElement) {
-                        await document.exitPictureInPicture();
-                    } else {
-                        await firstVideo.requestPictureInPicture();
-                    }
+    /**
+     * Leave Video Room
+     */
+    function handleLeaveRoom() {
+        if (roomManager) {
+            roomManager.disconnect();
+            roomManager = null;
+        }
+
+        cleanupCallUI();
+        startLocalPreview();
+        showToast('You left the room.', 'info');
+    }
+
+    /**
+     * Room Disconnected Callback
+     */
+    function handleRoomDisconnected(error) {
+        cleanupCallUI();
+        startLocalPreview();
+        if (error) {
+            showToast(`Room disconnected: ${error.message}`, 'error');
+        }
+    }
+
+    /**
+     * Clean up Call UI & state
+     */
+    function cleanupCallUI() {
+        stopCallTimer();
+        elements.roomContainer.classList.add('hidden');
+        elements.lobbyContainer.classList.remove('hidden');
+        updateConnectionStatus(false, 'Disconnected');
+
+        // Clear remote tiles from video grid
+        activeParticipants.forEach((tile) => tile.remove());
+        activeParticipants.clear();
+
+        // Reset local video element
+        elements.localVideo.srcObject = null;
+        elements.localVideoFallback.classList.add('hidden');
+        
+        // Reset Phase 3 state
+        stopSpeechRecognition();
+        isCaptionsOn = false;
+        elements.toggleCaptionsBtn.classList.remove('active');
+        elements.captionOverlay.classList.add('hidden');
+        
+        isBackgroundBlurred = false;
+        elements.toggleBlurBtn.classList.remove('active');
+        elements.localVideo.classList.remove('video-blurred');
+        elements.localPreviewVideo.classList.remove('video-blurred');
+
+        // Reset control bar buttons
+        updateMicButtonUI(false);
+        updateCamButtonUI(false);
+
+        updateGridLayout();
+    }
+
+    /**
+     * Dynamic Grid Layout CSS Selector Update (Grid View vs Speaker View)
+     */
+    function updateGridLayout() {
+        const count = activeParticipants.size + 1; // Remote + Local
+        elements.videoGrid.className = 'video-grid';
+
+        if (isSpeakerView) {
+            elements.videoGrid.classList.add('speaker-mode');
+            
+            // Clean up sidebar if present
+            let sidebar = elements.videoGrid.querySelector('.thumbnails-sidebar');
+            if (!sidebar) {
+                sidebar = document.createElement('div');
+                sidebar.className = 'thumbnails-sidebar';
+                elements.videoGrid.appendChild(sidebar);
+            }
+
+            // Determine spotlight tile
+            let spotlightTile = null;
+            if (currentSpotlightSid && document.getElementById(`tile-${currentSpotlightSid}`)) {
+                spotlightTile = document.getElementById(`tile-${currentSpotlightSid}`);
+            } else if (activeParticipants.size > 0) {
+                spotlightTile = activeParticipants.values().next().value;
+            } else {
+                spotlightTile = elements.localParticipantTile;
+            }
+
+            // Move spotlight tile to main area and rest to sidebar
+            const allTiles = [elements.localParticipantTile, ...Array.from(activeParticipants.values())];
+            allTiles.forEach(tile => {
+                tile.classList.remove('spotlight-tile');
+                if (tile === spotlightTile) {
+                    tile.classList.add('spotlight-tile');
+                    elements.videoGrid.appendChild(tile);
                 } else {
-                    showToast("Picture in Picture not supported in this browser.", "warning");
-                }
-            } catch (err) {
-                console.error("PiP Error:", err);
-            }
-        });
-    }
-
-    // Hand Raise Toggle
-    if (handRaiseBtn) {
-        handRaiseBtn.addEventListener("click", () => {
-            isHandRaised = !isHandRaised;
-            handRaiseBtn.classList.toggle("btn-active", isHandRaised);
-            toggleParticipantHand("local", isHandRaised);
-            sendSignal("hand_raise", { raised: isHandRaised });
-        });
-    }
-
-    function toggleParticipantHand(sid, raised) {
-        const handTag = document.getElementById(`hand-participant-${sid}`);
-        if (handTag) handTag.classList.toggle("hidden", !raised);
-        const card = document.getElementById(`participant-${sid}`);
-        if (card) card.classList.toggle("hand-raised", raised);
-    }
-
-    // Emoji Reactions Menu
-    if (emojiBtn && emojiBar) {
-        emojiBtn.addEventListener("click", () => {
-            emojiBar.classList.toggle("hidden");
-        });
-
-        emojiBar.addEventListener("click", (e) => {
-            const chip = e.target.closest(".emoji-chip");
-            if (chip) {
-                const emoji = chip.getAttribute("data-emoji");
-                spawnFloatingEmoji(emoji);
-                sendSignal("reaction", { emoji });
-                emojiBar.classList.add("hidden");
-            }
-        });
-    }
-
-    // Recording Toggle
-    if (recordBtn) {
-        recordBtn.addEventListener("click", () => {
-            isRecording = !isRecording;
-            toggleRecordingUI(isRecording);
-            sendSignal("record_toggle", { isRecording });
-        });
-    }
-
-    function toggleRecordingUI(recording) {
-        isRecording = recording;
-        if (recordBtn) recordBtn.classList.toggle("btn-muted", recording);
-        if (recordingBadge) recordingBadge.classList.toggle("hidden", !recording);
-
-        if (recording) {
-            showToast("Meeting recording started.", "warning");
-            startRecTimer();
-        } else {
-            showToast("Meeting recording stopped.", "info");
-            stopRecTimer();
-        }
-    }
-
-    // ==========================================================================
-    // 10. CHAT, FILE SHARING, & DRAWER CONTROLS
-    // ==========================================================================
-
-    // Chat Drawer Toggle
-    if (chatToggleBtn) {
-        chatToggleBtn.addEventListener("click", () => {
-            sideDrawer.classList.remove("hidden");
-            switchTab("chat");
-            resetUnreadBadge();
-        });
-    }
-
-    if (closeDrawerBtn) {
-        closeDrawerBtn.addEventListener("click", () => {
-            sideDrawer.classList.add("hidden");
-        });
-    }
-
-    if (tabChatBtn && tabParticipantsBtn) {
-        tabChatBtn.addEventListener("click", () => switchTab("chat"));
-        tabParticipantsBtn.addEventListener("click", () => switchTab("participants"));
-    }
-
-    function switchTab(tab) {
-        if (tab === "chat") {
-            tabChatBtn.classList.add("active");
-            tabParticipantsBtn.classList.remove("active");
-            chatTabContent.classList.remove("hidden");
-            participantsTabContent.classList.add("hidden");
-            resetUnreadBadge();
-        } else {
-            tabParticipantsBtn.classList.add("active");
-            tabChatBtn.classList.remove("active");
-            participantsTabContent.classList.remove("hidden");
-            chatTabContent.classList.add("hidden");
-        }
-    }
-
-    // Send Text Chat Message
-    if (chatForm) {
-        chatForm.addEventListener("submit", (e) => {
-            e.preventDefault();
-            const text = messageInput.value.trim();
-            if (!text) return;
-
-            appendChatMessage("You", text, true);
-            sendSignal("chat", { text });
-            messageInput.value = "";
-        });
-
-        // Typing Indicator Broadcast
-        messageInput.addEventListener("input", () => {
-            sendSignal("typing");
-        });
-    }
-
-    function appendChatMessage(sender, text, isSelf = false, timestamp = null) {
-        if (!chatFeed) return;
-        const msg = document.createElement("div");
-        msg.className = `chat-bubble ${isSelf ? "self" : "remote"}`;
-        const timeStr = timestamp ? new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-
-        msg.innerHTML = `
-            <span class="chat-meta">${escapeHTML(sender)} • ${timeStr}</span>
-            <div class="chat-text">${escapeHTML(text)}</div>
-        `;
-        chatFeed.appendChild(msg);
-        chatFeed.scrollTop = chatFeed.scrollHeight;
-    }
-
-    // File Sharing
-    if (attachFileBtn && fileInput) {
-        attachFileBtn.addEventListener("click", () => fileInput.click());
-
-        fileInput.addEventListener("change", () => {
-            const file = fileInput.files[0];
-            if (!file) return;
-
-            if (file.size > 5 * 1024 * 1024) {
-                showToast("File size limit is 5MB.", "warning");
-                return;
-            }
-
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const fileData = e.target.result;
-                appendFileMessage("You", file.name, fileData, true);
-                sendSignal("file", { fileName: file.name, fileData });
-                fileInput.value = "";
-            };
-            reader.readAsDataURL(file);
-        });
-    }
-
-    function appendFileMessage(sender, fileName, fileData, isSelf = false) {
-        if (!chatFeed) return;
-        const msg = document.createElement("div");
-        msg.className = `chat-bubble ${isSelf ? "self" : "remote"}`;
-        msg.innerHTML = `
-            <span class="chat-meta">${escapeHTML(sender)} shared a file</span>
-            <a href="${fileData}" download="${escapeHTML(fileName)}" class="chat-file-card">
-                <i class="fa-solid fa-file-arrow-down"></i>
-                <span>${escapeHTML(fileName)}</span>
-            </a>
-        `;
-        chatFeed.appendChild(msg);
-        chatFeed.scrollTop = chatFeed.scrollHeight;
-    }
-
-    function showTypingIndicator(username) {
-        if (!typingIndicator || !typingUserText) return;
-        typingUserText.textContent = `${username} is typing...`;
-        typingIndicator.classList.remove("hidden");
-
-        if (typingTimeout) clearTimeout(typingTimeout);
-        typingTimeout = setTimeout(() => typingIndicator.classList.add("hidden"), 2500);
-    }
-
-    function incrementUnreadBadge() {
-        unreadCount++;
-        if (unreadBadge) {
-            unreadBadge.textContent = unreadCount;
-            unreadBadge.classList.remove("hidden");
-        }
-    }
-
-    function resetUnreadBadge() {
-        unreadCount = 0;
-        if (unreadBadge) unreadBadge.classList.add("hidden");
-    }
-
-    // Admin Mute All & Mute Individual
-    if (muteAllBtn) {
-        muteAllBtn.addEventListener("click", () => {
-            sendSignal("admin_mute", { targetSid: "all" });
-            showToast("Mute signal sent to all participants.", "info");
-        });
-    }
-
-    function updateDrawerList() {
-        if (!participantsList) return;
-        participantsList.innerHTML = "";
-        let count = 0;
-
-        participantRegistry.forEach((val, sid) => {
-            count++;
-            const row = document.createElement("div");
-            row.className = "participant-row";
-            const identity = val.participant.identity || "Participant";
-            const isLocal = sid === "local";
-
-            row.innerHTML = `
-                <span>${escapeHTML(identity)} ${isLocal ? "(You)" : ""}</span>
-                ${isHost && !isLocal ? `<button type="button" class="meet-btn meet-btn-secondary btn-sm" onclick="muteUser('${sid}')">Mute</button>` : ""}
-            `;
-            participantsList.appendChild(row);
-        });
-
-        if (drawerParticipantCount) drawerParticipantCount.textContent = count;
-    }
-
-    // ==========================================================================
-    // 11. AUDIO & CAMERA TOGGLES & CLEANUP
-    // ==========================================================================
-
-    if (micBtn) {
-        micBtn.addEventListener("click", () => {
-            if (!activeRoom) return;
-            if (isMicMuted) unmuteLocalAudio();
-            else muteLocalAudio();
-        });
-    }
-
-    function muteLocalAudio() {
-        isMicMuted = true;
-        if (activeRoom) {
-            activeRoom.localParticipant.audioTracks.forEach((pub) => { if (pub.track) pub.track.disable(); });
-        }
-        if (micBtn) {
-            micBtn.classList.add("btn-muted");
-            micBtn.innerHTML = `<i class="fa-solid fa-microphone-slash"></i><span class="btn-tooltip">Unmute</span>`;
-        }
-        updateAudioIndicator("participant-local", false);
-    }
-
-    function unmuteLocalAudio() {
-        isMicMuted = false;
-        if (activeRoom) {
-            activeRoom.localParticipant.audioTracks.forEach((pub) => { if (pub.track) pub.track.enable(); });
-        }
-        if (micBtn) {
-            micBtn.classList.remove("btn-muted");
-            micBtn.innerHTML = `<i class="fa-solid fa-microphone"></i><span class="btn-tooltip">Mute</span>`;
-        }
-        updateAudioIndicator("participant-local", true);
-    }
-
-    if (camBtn) {
-        camBtn.addEventListener("click", () => {
-            if (!activeRoom) return;
-            isCamDisabled = !isCamDisabled;
-            activeRoom.localParticipant.videoTracks.forEach((pub) => {
-                if (pub.track) {
-                    if (isCamDisabled) pub.track.disable();
-                    else pub.track.enable();
+                    sidebar.appendChild(tile);
                 }
             });
 
-            const localAvatar = document.getElementById("avatar-participant-local");
-            if (isCamDisabled) {
-                camBtn.classList.add("btn-muted");
-                camBtn.innerHTML = `<i class="fa-solid fa-video-slash"></i><span class="btn-tooltip">Start Video</span>`;
-                if (localAvatar) localAvatar.classList.remove("hidden");
-            } else {
-                camBtn.classList.remove("btn-muted");
-                camBtn.innerHTML = `<i class="fa-solid fa-video"></i><span class="btn-tooltip">Stop Video</span>`;
-                if (localAvatar) localAvatar.classList.add("hidden");
+        } else {
+            // Restore Grid Mode
+            const sidebar = elements.videoGrid.querySelector('.thumbnails-sidebar');
+            if (sidebar) {
+                const childTiles = Array.from(sidebar.children);
+                childTiles.forEach(tile => elements.videoGrid.appendChild(tile));
+                sidebar.remove();
             }
-        });
-    }
 
-    if (shareBtn) {
-        shareBtn.addEventListener("click", () => {
-            const roomName = roomInput.value.trim() || "general-room";
-            const password = passwordInput ? passwordInput.value.trim() : "";
-            const link = `${window.location.origin}/?room=${encodeURIComponent(roomName)}${password ? `&pw=${encodeURIComponent(password)}` : ""}`;
-            if (navigator.clipboard) {
-                navigator.clipboard.writeText(`Join VisionMeet call:\nRoom: ${roomName}\nLink: ${link}`);
-                showToast("Invite link copied to clipboard!", "success");
-            }
-        });
-    }
+            const allTiles = [elements.localParticipantTile, ...Array.from(activeParticipants.values())];
+            allTiles.forEach(tile => tile.classList.remove('spotlight-tile'));
 
-    if (leaveBtn) {
-        leaveBtn.addEventListener("click", () => {
-            if (activeRoom) activeRoom.disconnect();
-        });
-    }
-
-    function onRoomDisconnected() {
-        stopCallTimer();
-        stopRecTimer();
-        stopScreenShare();
-
-        Array.from(participantRegistry.keys()).forEach((sid) => cleanupParticipant(sid));
-        participantRegistry.clear();
-        activeRoom = null;
-
-        roomContainer.classList.add("hidden");
-        sideDrawer.classList.add("hidden");
-        lobbyContainer.classList.remove("hidden");
-        if (onlineCounter) onlineCounter.classList.add("hidden");
-
-        updateStatus("disconnected", "Disconnected");
-        showToast("You left the meeting.", "info");
-
-        if (localVideoTrack && previewVideo && !isCamDisabled) {
-            localVideoTrack.attach(previewVideo);
-            hidePreviewAvatar();
+            if (count === 1) elements.videoGrid.classList.add('grid-1');
+            else if (count === 2) elements.videoGrid.classList.add('grid-2');
+            else if (count <= 4) elements.videoGrid.classList.add('grid-4');
+            else if (count <= 6) elements.videoGrid.classList.add('grid-6');
+            else if (count <= 9) elements.videoGrid.classList.add('grid-9');
+            else elements.videoGrid.classList.add('grid-many');
         }
     }
 
-    function updateGrid() {
-        const total = participantRegistry.size;
-        if (!participantGrid) return;
-        if (total <= 1) participantGrid.style.gridTemplateColumns = "minmax(320px, 850px)";
-        else if (total === 2) participantGrid.style.gridTemplateColumns = "repeat(2, minmax(320px, 1fr))";
-        else if (total <= 4) participantGrid.style.gridTemplateColumns = "repeat(2, minmax(300px, 1fr))";
-        else participantGrid.style.gridTemplateColumns = "repeat(auto-fit, minmax(260px, 1fr))";
+    /**
+     * Update Participant Counter Badge
+     */
+    function updateParticipantCount() {
+        const count = activeParticipants.size + 1;
+        elements.participantCount.textContent = `${count} ${count === 1 ? 'Participant' : 'Participants'}`;
     }
 
-    function updateStatus(state, text) {
-        if (!statusBadge || !statusText) return;
-        statusBadge.className = `status-pill status-${state}`;
-        statusText.textContent = text;
-    }
-
-    function updateParticipantCounts() {
-        if (!activeRoom) return;
-        const total = activeRoom.participants.size + 1;
-        const text = `${total} Participant${total > 1 ? "s" : ""}`;
-        if (onlineCountText) onlineCountText.textContent = text;
-        if (participantCountText) participantCountText.textContent = text;
-    }
-
+    /**
+     * Call Timer Functions
+     */
     function startCallTimer() {
-        callSeconds = 0;
-        if (callTimerInterval) clearInterval(callTimerInterval);
+        callStartTime = Date.now();
+        elements.callTimer.textContent = '00:00';
         callTimerInterval = setInterval(() => {
-            callSeconds++;
-            const m = String(Math.floor(callSeconds / 60)).padStart(2, "0");
-            const s = String(callSeconds % 60).padStart(2, "0");
-            if (callTimer) callTimer.textContent = `${m}:${s}`;
+            const elapsed = Math.floor((Date.now() - callStartTime) / 1000);
+            const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
+            const secs = String(elapsed % 60).padStart(2, '0');
+            elements.callTimer.textContent = `${mins}:${secs}`;
         }, 1000);
     }
 
     function stopCallTimer() {
-        if (callTimerInterval) clearInterval(callTimerInterval);
-        if (callTimer) callTimer.textContent = "00:00";
+        if (callTimerInterval) {
+            clearInterval(callTimerInterval);
+            callTimerInterval = null;
+        }
+        elements.callTimer.textContent = '00:00';
     }
 
-    function startRecTimer() {
-        recSeconds = 0;
-        if (recTimerInterval) clearInterval(recTimerInterval);
-        recTimerInterval = setInterval(() => {
-            recSeconds++;
-            const m = String(Math.floor(recSeconds / 60)).padStart(2, "0");
-            const s = String(recSeconds % 60).padStart(2, "0");
-            if (recTimer) recTimer.textContent = `${m}:${s}`;
-        }, 1000);
+    /**
+     * Update Connection Status Badge
+     */
+    function updateConnectionStatus(isConnected, text) {
+        elements.connectionStatusBadge.className = `status-badge ${isConnected ? 'connected' : 'disconnected'}`;
+        elements.statusText.textContent = text;
     }
 
-    function stopRecTimer() {
-        if (recTimerInterval) clearInterval(recTimerInterval);
-        if (recTimer) recTimer.textContent = "00:00";
+    /**
+     * Show Toast Notification Banner
+     */
+    function showToast(message, type = 'info', duration = 4000) {
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        
+        let iconClass = 'fa-circle-info';
+        if (type === 'error') iconClass = 'fa-circle-exclamation';
+        if (type === 'success') iconClass = 'fa-circle-check';
+
+        toast.innerHTML = `
+            <i class="fa-solid ${iconClass} toast-icon"></i>
+            <div class="toast-content">
+                <div class="toast-title">${type.toUpperCase()}</div>
+                <div>${message}</div>
+            </div>
+        `;
+
+        elements.toastContainer.appendChild(toast);
+
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateX(20px)';
+            toast.style.transition = 'all 0.3s ease-out';
+            setTimeout(() => toast.remove(), 300);
+        }, duration);
     }
 
-    function destroyMedia() {
-        if (activeRoom) activeRoom.disconnect();
-        if (localVideoTrack) { localVideoTrack.stop(); localVideoTrack = null; }
-        if (localAudioTrack) { localAudioTrack.stop(); localAudioTrack = null; }
+    /**
+     * Toggle Global Loading Overlay
+     */
+    function showLoading(show, message = 'Loading...') {
+        elements.loadingMessage.textContent = message;
+        elements.loadingOverlay.classList.toggle('hidden', !show);
     }
 
-    window.addEventListener("beforeunload", destroyMedia);
-    window.addEventListener("pagehide", destroyMedia);
+    /**
+     * Handle Screen Sharing Toggle
+     */
+    async function handleToggleScreenShare() {
+        if (!roomManager) return;
+
+        if (!isSharingScreen) {
+            try {
+                const screenTrack = await roomManager.startScreenShare();
+                if (screenTrack) {
+                    isSharingScreen = true;
+                    elements.toggleScreenBtn.classList.add('btn-action');
+                    showToast('Screen sharing started', 'success');
+                }
+            } catch (err) {
+                showToast('Failed to start screen share.', 'error');
+            }
+        } else {
+            roomManager.stopScreenShare();
+            handleScreenShareEnded();
+        }
+    }
+
+    function handleScreenShareEnded() {
+        isSharingScreen = false;
+        elements.toggleScreenBtn.classList.remove('btn-action');
+        showToast('Screen sharing stopped', 'info');
+    }
+
+    /**
+     * Toggle In-Call Chat Side Drawer
+     */
+    function toggleChatDrawer() {
+        isChatOpen = !isChatOpen;
+        elements.chatPanel.classList.toggle('hidden', !isChatOpen);
+        elements.toggleChatBtn.classList.toggle('active', isChatOpen);
+
+        if (isChatOpen) {
+            unreadCount = 0;
+            elements.unreadBadge.classList.add('hidden');
+            elements.unreadBadge.textContent = '0';
+            elements.chatInput.focus();
+        }
+    }
+
+    /**
+     * Handle Sending Chat Message
+     */
+    function handleSendChatMessage(e) {
+        e.preventDefault();
+        const text = elements.chatInput.value.trim();
+        if (!text || !roomManager) return;
+
+        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        // Broadcast via WebRTC DataTrack
+        roomManager.sendDataMessage({
+            type: 'chat',
+            text: text,
+            sender: currentUsername,
+            time: timeStr
+        });
+
+        // Append to local chat UI
+        appendChatMessage(text, currentUsername, timeStr, true);
+        elements.chatInput.value = '';
+    }
+
+    /**
+     * Append message bubble to chat container
+     */
+    function appendChatMessage(text, sender, time, isSelf = false) {
+        const msgBubble = document.createElement('div');
+        msgBubble.className = `chat-msg-bubble ${isSelf ? 'chat-msg-self' : ''}`;
+        msgBubble.innerHTML = `
+            <span class="chat-msg-sender">${escapeHtml(sender)}</span>
+            <span>${escapeHtml(text)}</span>
+            <span class="chat-msg-time">${time}</span>
+        `;
+        elements.chatMessages.appendChild(msgBubble);
+        elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+    }
+
+    /**
+     * Toggle Reactions Picker Menu
+     */
+    function toggleReactionsPicker(e) {
+        if (e) e.stopPropagation();
+        elements.reactionsPicker.classList.toggle('hidden');
+    }
+
+    /**
+     * Send Emoji Reaction
+     */
+    function sendEmojiReaction(emoji) {
+        if (!emoji) return;
+
+        // Immediately close reactions picker
+        elements.reactionsPicker.classList.add('hidden');
+
+        // Broadcast reaction to room participants if connected
+        try {
+            if (roomManager) {
+                roomManager.sendDataMessage({
+                    type: 'reaction',
+                    emoji: emoji,
+                    sender: currentUsername || 'You'
+                });
+            }
+        } catch (err) {
+            console.warn('Could not broadcast emoji reaction:', err);
+        }
+
+        // Animate celebratory floating emoji burst from the React button / bottom area
+        triggerEmojiStream(emoji, elements.reactionsBtn);
+
+        // Show animated reaction badge on local video tile
+        showTileReactionBadge(elements.localParticipantTile, emoji);
+
+        // Feedback toast
+        showToast(`Reacted with ${emoji}`, 'info', 1800);
+    }
+
+    /**
+     * Handle Hand Raise Toggle
+     */
+    function handleToggleHandRaise() {
+        if (!roomManager) return;
+
+        isHandRaised = !isHandRaised;
+        elements.handRaiseBtn.classList.toggle('hand-active', isHandRaised);
+
+        // Update local tile UI
+        updateHandRaisedUI(elements.localParticipantTile, isHandRaised, 'You');
+
+        // Broadcast hand raise event
+        roomManager.sendDataMessage({
+            type: 'hand_raise',
+            raised: isHandRaised,
+            sender: currentUsername
+        });
+
+        showToast(isHandRaised ? 'Hand raised ✋' : 'Hand lowered', 'info', 2000);
+    }
+
+    /**
+     * Handle Incoming WebRTC DataTrack Messages
+     */
+    function handleIncomingDataMessage(payload, participant) {
+        const senderName = payload.sender || participant.identity;
+        const mySid = roomManager && roomManager.room && roomManager.room.localParticipant ? roomManager.room.localParticipant.sid : null;
+
+        if (payload.type === 'chat') {
+            appendChatMessage(payload.text, senderName, payload.time || 'Now', false);
+
+            if (!isChatOpen) {
+                unreadCount++;
+                elements.unreadBadge.textContent = unreadCount > 9 ? '9+' : unreadCount;
+                elements.unreadBadge.classList.remove('hidden');
+                showToast(`💬 New message from ${senderName}`, 'info', 3000);
+            }
+        } else if (payload.type === 'reaction') {
+            const remoteTile = (participant && participant.sid) ? document.getElementById(`tile-${participant.sid}`) : null;
+            const targetTile = remoteTile || elements.localParticipantTile;
+            showFloatingEmoji(payload.emoji, targetTile);
+            showToast(`${senderName} reacted with ${payload.emoji}`, 'info', 2500);
+        } else if (payload.type === 'hand_raise') {
+            const tile = document.getElementById(`tile-${participant.sid}`) || elements.localParticipantTile;
+            updateHandRaisedUI(tile, payload.raised, senderName);
+            if (payload.raised) {
+                showToast(`✋ ${senderName} raised their hand!`, 'info', 4000);
+            }
+        } else if (payload.type === 'caption') {
+            displayLiveCaption(senderName, payload.text);
+        } else if (payload.type === 'host_mute_user') {
+            if (payload.targetSid === mySid) {
+                if (!roomManager.isAudioMuted) {
+                    roomManager.toggleAudio();
+                    updateMicButtonUI(true);
+                    showToast('🔇 The host muted your microphone.', 'error', 5000);
+                }
+            }
+        } else if (payload.type === 'host_mute_all') {
+            if (!isHost && !roomManager.isAudioMuted) {
+                roomManager.toggleAudio();
+                updateMicButtonUI(true);
+                showToast('🔇 The host muted all participants.', 'error', 5000);
+            }
+        } else if (payload.type === 'host_kick_user') {
+            if (payload.targetSid === mySid) {
+                showToast('🚪 You were removed from the room by the host.', 'error', 6000);
+                setTimeout(() => {
+                    handleLeaveRoom();
+                }, 1000);
+            }
+        }
+    }
+
+    /**
+     * Phase 3: Toggle AI Live Subtitles & Closed Captions
+     */
+    function toggleCaptions() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+        if (!SpeechRecognition) {
+            showToast('Live captions not supported on this browser (supported on Chrome/Edge/Safari).', 'error', 5000);
+            return;
+        }
+
+        isCaptionsOn = !isCaptionsOn;
+        elements.toggleCaptionsBtn.classList.toggle('active', isCaptionsOn);
+
+        if (isCaptionsOn) {
+            startSpeechRecognition();
+            showToast('AI Live Closed Captions ON', 'success');
+        } else {
+            stopSpeechRecognition();
+            elements.captionOverlay.classList.add('hidden');
+            showToast('Closed Captions OFF', 'info');
+        }
+    }
+
+    /**
+     * Start Web Speech API Recognition Engine
+     */
+    function startSpeechRecognition() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) return;
+
+        speechRecognizer = new SpeechRecognition();
+        speechRecognizer.continuous = true;
+        speechRecognizer.interimResults = true;
+        speechRecognizer.lang = 'en-US';
+
+        speechRecognizer.onresult = (event) => {
+            let interimTranscript = '';
+            let finalTranscript = '';
+
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                const transcript = event.results[i][0].transcript;
+                if (event.results[i].isFinal) {
+                    finalTranscript += transcript;
+                } else {
+                    interimTranscript += transcript;
+                }
+            }
+
+            const currentText = finalTranscript || interimTranscript;
+            if (currentText.trim()) {
+                // Render locally
+                displayLiveCaption(currentUsername || 'You', currentText);
+
+                // Broadcast transcript to room via WebRTC DataTrack
+                if (roomManager) {
+                    roomManager.sendDataMessage({
+                        type: 'caption',
+                        text: currentText,
+                        sender: currentUsername
+                    });
+                }
+            }
+        };
+
+        speechRecognizer.onerror = (err) => {
+            console.warn('Speech recognition error:', err);
+        };
+
+        speechRecognizer.onend = () => {
+            // Auto restart if captions remain enabled
+            if (isCaptionsOn) {
+                try { speechRecognizer.start(); } catch (e) {}
+            }
+        };
+
+        try {
+            speechRecognizer.start();
+        } catch (e) {
+            console.warn('Speech recognition start failed:', e);
+        }
+    }
+
+    /**
+     * Stop Web Speech API Recognition Engine
+     */
+    function stopSpeechRecognition() {
+        if (speechRecognizer) {
+            try {
+                speechRecognizer.stop();
+            } catch (e) {}
+            speechRecognizer = null;
+        }
+    }
+
+    /**
+     * Render Live Caption Overlay Banner
+     */
+    function displayLiveCaption(speakerName, text) {
+        elements.captionSpeaker.textContent = `${speakerName}:`;
+        elements.captionText.textContent = text;
+        elements.captionOverlay.classList.remove('hidden');
+
+        if (captionHideTimeout) clearTimeout(captionHideTimeout);
+        captionHideTimeout = setTimeout(() => {
+            elements.captionOverlay.classList.add('hidden');
+        }, 4000);
+    }
+
+    /**
+     * Phase 3: Toggle Camera Background Blur
+     */
+    function toggleBackgroundBlur() {
+        isBackgroundBlurred = !isBackgroundBlurred;
+        elements.toggleBlurBtn.classList.toggle('active', isBackgroundBlurred);
+
+        elements.localVideo.classList.toggle('video-blurred', isBackgroundBlurred);
+        elements.localPreviewVideo.classList.toggle('video-blurred', isBackgroundBlurred);
+
+        showToast(isBackgroundBlurred ? 'AI Background Blur ON ✨' : 'Background Blur OFF', 'info');
+    }
+
+    /**
+     * Phase 2: Toggle Speaker View vs Grid View
+     */
+    function toggleSpeakerView() {
+        isSpeakerView = !isSpeakerView;
+        elements.toggleViewBtn.classList.toggle('btn-primary', isSpeakerView);
+        elements.viewModeLabel.textContent = isSpeakerView ? 'Grid View' : 'Speaker View';
+        elements.toggleViewBtn.querySelector('i').className = isSpeakerView ? 'fa-solid fa-user-large' : 'fa-solid fa-border-all';
+        updateGridLayout();
+    }
+
+    /**
+     * Phase 2: Handle Dominant Speaker Changes
+     */
+    function handleDominantSpeakerChanged(participant) {
+        // Remove active class from all tiles
+        document.querySelectorAll('.participant-tile').forEach(tile => tile.classList.remove('dominant-speaker'));
+
+        if (!participant) return;
+
+        const speakerTile = document.getElementById(`tile-${participant.sid}`);
+        if (speakerTile) {
+            speakerTile.classList.add('dominant-speaker');
+            currentSpotlightSid = participant.sid;
+            if (isSpeakerView) {
+                updateGridLayout();
+            }
+        }
+    }
+
+    /**
+     * Phase 2 Host Moderation: Mute Remote User
+     */
+    function handleHostMuteUser(targetSid, targetName) {
+        if (!isHost || !roomManager) return;
+        roomManager.sendDataMessage({
+            type: 'host_mute_user',
+            targetSid: targetSid
+        });
+        showToast(`Sent mute request to ${targetName}.`, 'info', 2000);
+    }
+
+    /**
+     * Phase 2 Host Moderation: Kick Remote User
+     */
+    function handleHostKickUser(targetSid, targetName) {
+        if (!isHost || !roomManager) return;
+        if (confirm(`Are you sure you want to remove ${targetName} from the room?`)) {
+            roomManager.sendDataMessage({
+                type: 'host_kick_user',
+                targetSid: targetSid,
+                targetName: targetName
+            });
+            showToast(`Removed ${targetName} from the room.`, 'info', 3000);
+        }
+    }
+
+    /**
+     * Phase 2 Host Moderation: Mute All Participants
+     */
+    function handleHostMuteAll() {
+        if (!isHost || !roomManager) return;
+        roomManager.sendDataMessage({
+            type: 'host_mute_all'
+        });
+        showToast('Muted all participants in the room.', 'info', 3000);
+    }
+
+    /**
+     * Fullscreen Mode Handler for Entire App / Meeting View
+     */
+    function toggleAppFullscreen() {
+        const fsElement = document.fullscreenElement || document.webkitFullscreenElement;
+        const targetContainer = elements.roomContainer || document.documentElement;
+
+        if (!fsElement) {
+            if (targetContainer.requestFullscreen) {
+                targetContainer.requestFullscreen();
+            } else if (targetContainer.webkitRequestFullscreen) {
+                targetContainer.webkitRequestFullscreen();
+            }
+            showToast('Entered Fullscreen Mode', 'info', 2000);
+        } else {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            }
+        }
+    }
+
+    /**
+     * Fullscreen Mode Handler for Individual Participant Video Tile
+     */
+    function toggleTileFullscreen(tileElement) {
+        if (!tileElement) return;
+        const fsElement = document.fullscreenElement || document.webkitFullscreenElement;
+
+        if (!fsElement) {
+            if (tileElement.requestFullscreen) {
+                tileElement.requestFullscreen();
+            } else if (tileElement.webkitRequestFullscreen) {
+                tileElement.webkitRequestFullscreen();
+            }
+        } else {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            }
+        }
+    }
+
+    /**
+     * Sync Fullscreen Icons when entering or exiting Fullscreen mode
+     */
+    function handleFullscreenChange() {
+        const fsElement = document.fullscreenElement || document.webkitFullscreenElement;
+        const isFS = Boolean(fsElement);
+
+        if (elements.toggleFullscreenBtn) {
+            elements.toggleFullscreenBtn.classList.toggle('active', isFS);
+            elements.toggleFullscreenBtn.querySelector('i').className = isFS ? 'fa-solid fa-compress' : 'fa-solid fa-expand';
+            elements.toggleFullscreenBtn.querySelector('.btn-label').textContent = isFS ? 'Exit Full' : 'Full Screen';
+        }
+
+        document.querySelectorAll('.tile-fullscreen-btn i').forEach(icon => {
+            icon.className = isFS ? 'fa-solid fa-compress' : 'fa-solid fa-expand';
+        });
+    }
+
+    /**
+     * Trigger a burst of floating emojis streaming upwards
+     * @param {string} emoji - Emoji character to display
+     * @param {HTMLElement} [anchorElement] - Element to spawn emojis from (defaults to reactionsBtn or screen bottom center)
+     */
+    function triggerEmojiStream(emoji, anchorElement) {
+        if (!emoji) return;
+
+        let originX = window.innerWidth / 2;
+        let originY = window.innerHeight - 120;
+
+        if (anchorElement && typeof anchorElement.getBoundingClientRect === 'function') {
+            const rect = anchorElement.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+                originX = rect.left + (rect.width / 2);
+                originY = rect.top;
+            }
+        }
+
+        // Spawn a burst of 5 floating emojis with organic horizontal drift and staggered timings
+        const burstCount = 5;
+        for (let i = 0; i < burstCount; i++) {
+            setTimeout(() => {
+                const emojiEl = document.createElement('div');
+                emojiEl.className = 'floating-emoji';
+                emojiEl.textContent = emoji;
+
+                // Organic horizontal drift between -45px and +45px
+                const driftX = (Math.random() - 0.5) * 90;
+                // Random animation duration between 1.8s and 2.3s
+                const duration = (1.8 + Math.random() * 0.5).toFixed(2);
+                // Slight initial scale variation
+                const scale = (0.9 + Math.random() * 0.35).toFixed(2);
+
+                emojiEl.style.left = `${originX}px`;
+                emojiEl.style.top = `${originY}px`;
+                emojiEl.style.setProperty('--drift-x', `${driftX}px`);
+                emojiEl.style.setProperty('--duration', `${duration}s`);
+                emojiEl.style.fontSize = `${(2.6 * scale).toFixed(2)}rem`;
+
+                document.body.appendChild(emojiEl);
+
+                setTimeout(() => {
+                    emojiEl.remove();
+                }, parseFloat(duration) * 1000 + 100);
+            }, i * 75);
+        }
+    }
+
+    /**
+     * Show a temporary animated reaction badge on a participant's tile
+     */
+    function showTileReactionBadge(tileElement, emoji) {
+        if (!tileElement || !emoji) return;
+        const identityContainer = tileElement.querySelector('.user-identity');
+        if (!identityContainer) return;
+
+        // Remove any existing reaction badge
+        const existing = identityContainer.querySelector('.reaction-tile-badge');
+        if (existing) existing.remove();
+
+        const badge = document.createElement('span');
+        badge.className = 'reaction-tile-badge';
+        badge.textContent = emoji;
+        badge.title = `Reacted with ${emoji}`;
+        identityContainer.appendChild(badge);
+
+        // Auto remove badge after 3 seconds with smooth fade
+        setTimeout(() => {
+            badge.classList.add('badge-fade-out');
+            setTimeout(() => badge.remove(), 300);
+        }, 3000);
+    }
+
+    /**
+     * Animate Floating Emoji Over Participant Video Tile (Screen position calculation)
+     */
+    function showFloatingEmoji(emoji, tileElement) {
+        triggerEmojiStream(emoji, tileElement);
+        showTileReactionBadge(tileElement, emoji);
+    }
+
+    /**
+     * Update Hand Raised Badge on Participant Tile
+     */
+    function updateHandRaisedUI(tileElement, isRaised, name) {
+        if (!tileElement) return;
+        const identityContainer = tileElement.querySelector('.user-identity');
+        if (!identityContainer) return;
+
+        let badge = identityContainer.querySelector('.hand-raised-badge');
+        if (isRaised) {
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.className = 'hand-raised-badge';
+                badge.innerHTML = '<i class="fa-solid fa-hand"></i> ✋';
+                identityContainer.appendChild(badge);
+            }
+        } else if (badge) {
+            badge.remove();
+        }
+    }
+
+    /**
+     * Helper: Escape HTML strings to prevent XSS
+     */
+    function escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    /**
+     * Helper: Extract initials from username
+     */
+    function getInitials(name) {
+        if (!name) return 'U';
+        const parts = name.trim().split(' ');
+        if (parts.length >= 2) {
+            return (parts[0][0] + parts[1][0]).toUpperCase();
+        }
+        return name.slice(0, 2).toUpperCase();
+    }
 });
