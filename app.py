@@ -125,8 +125,16 @@ def internal_error(error):
 
 
 if __name__ == "__main__":
+    if sys.platform == "win32":
+        try:
+            sys.stdout.reconfigure(encoding="utf-8")
+            sys.stderr.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
+
     port = Config.PORT
     debug = Config.DEBUG
-    print(f"🚀 Starting Video Chat Application on http://localhost:{port}")
-    print(f"🔑 Twilio Status: {'Configured ✅' if Config.is_twilio_configured() else 'Not Configured ⚠️ (Update .env file)'}")
+    print(f"Starting Video Chat Application on http://localhost:{port}")
+    twilio_status = "Configured [OK]" if Config.is_twilio_configured() else "Not Configured [WARN] (Update .env file)"
+    print(f"Twilio Status: {twilio_status}")
     app.run(host="0.0.0.0", port=port, debug=debug)
