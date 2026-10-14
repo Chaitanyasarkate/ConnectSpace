@@ -1180,6 +1180,113 @@ body {
 }
 
 /* ==========================================================================
+   1-on-1 Private Direct Whispers Styling
+   ========================================================================== */
+.chat-recipient-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: rgba(15, 23, 42, 0.7);
+    border-bottom: 1px solid var(--panel-border);
+}
+
+.chat-recipient-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.chat-recipient-select {
+    flex: 1;
+    background: rgba(30, 41, 59, 0.85);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-sm);
+    color: var(--text-main);
+    font-size: 0.78rem;
+    font-weight: 500;
+    padding: 0.35rem 0.6rem;
+    outline: none;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.chat-recipient-select:focus,
+.chat-recipient-select.whisper-active {
+    border-color: #c084fc;
+    box-shadow: 0 0 10px rgba(192, 132, 252, 0.35);
+    background: rgba(46, 16, 101, 0.4);
+}
+
+/* Whisper Message Bubbles */
+.chat-msg-bubble.chat-msg-whisper {
+    background: linear-gradient(135deg, rgba(88, 28, 135, 0.45) 0%, rgba(126, 34, 206, 0.25) 100%);
+    border: 1px solid rgba(192, 132, 252, 0.4);
+    box-shadow: 0 4px 15px rgba(126, 34, 206, 0.2);
+}
+
+.chat-msg-bubble.chat-msg-whisper.chat-msg-self {
+    background: linear-gradient(135deg, #7e22ce 0%, #9333ea 100%);
+    border: 1px solid rgba(216, 180, 254, 0.5);
+    box-shadow: 0 4px 15px rgba(147, 51, 234, 0.35);
+}
+
+.chat-whisper-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #e9d5ff;
+    background: rgba(147, 51, 234, 0.35);
+    padding: 0.15rem 0.45rem;
+    border-radius: 4px;
+    margin-bottom: 0.3rem;
+    width: fit-content;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border: 1px solid rgba(192, 132, 252, 0.3);
+}
+
+/* Whisper Mode Input Form Glow */
+.chat-input-form.whisper-mode {
+    background: rgba(30, 16, 60, 0.4);
+    border-top-color: rgba(192, 132, 252, 0.4);
+}
+
+.chat-input-form.whisper-mode input {
+    border-color: #c084fc;
+    box-shadow: 0 0 8px rgba(192, 132, 252, 0.25);
+}
+
+.chat-input-form.whisper-mode #send-msg-btn {
+    background: linear-gradient(135deg, #9333ea 0%, #a855f7 100%);
+    border-color: #a855f7;
+    box-shadow: 0 0 10px rgba(168, 85, 247, 0.4);
+}
+
+/* Participant Tile Whisper Action Button */
+.icon-btn-sm.whisper-tile-btn {
+    color: #c084fc;
+}
+
+.icon-btn-sm.whisper-tile-btn:hover {
+    background: rgba(168, 85, 247, 0.25);
+    color: #f3e8ff;
+    border-color: #c084fc;
+}
+
+/* Purple Whisper Badge for Unread Messages */
+.badge-unread.badge-whisper {
+    background: linear-gradient(135deg, #9333ea 0%, #d946ef 100%);
+    box-shadow: 0 0 10px rgba(217, 70, 239, 0.6);
+}
+
+/* ==========================================================================
    Phase 2: Speaker View & Host Moderation Controls
    ========================================================================== */
 

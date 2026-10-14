@@ -68,6 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
         chatPanel: document.getElementById('chat-panel'),
         closeChatBtn: document.getElementById('close-chat-btn'),
         chatMessages: document.getElementById('chat-messages'),
+        chatRecipientSelect: document.getElementById('chat-recipient-select'),
         chatForm: document.getElementById('chat-form'),
         chatInput: document.getElementById('chat-input')
     };
@@ -123,6 +124,9 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.toggleChatBtn.addEventListener('click', toggleChatDrawer);
     elements.closeChatBtn.addEventListener('click', toggleChatDrawer);
     elements.chatForm.addEventListener('submit', handleSendChatMessage);
+    if (elements.chatRecipientSelect) {
+        elements.chatRecipientSelect.addEventListener('change', updateChatInputPlaceholder);
+    }
     elements.handRaiseBtn.addEventListener('click', handleToggleHandRaise);
     elements.reactionsBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -422,6 +426,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     ${hostActionsHTML}
                 </div>
                 <div class="media-indicators">
+                    <button type="button" class="icon-btn-sm whisper-tile-btn" data-sid="${participant.sid}" data-name="${escapeHtml(participant.identity)}" title="Whisper Privately to ${escapeHtml(participant.identity)}">
+                        <i class="fa-solid fa-lock"></i>
+                    </button>
                     <button type="button" class="icon-btn-sm tile-fullscreen-btn" title="Expand Fullscreen">
                         <i class="fa-solid fa-expand"></i>
                     </button>
@@ -434,6 +441,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         elements.videoGrid.appendChild(tile);
         activeParticipants.set(participant.sid, tile);
+
+        // Bind Whisper Button
+        const whisperBtn = tile.querySelector('.whisper-tile-btn');
+        if (whisperBtn) {
+            whisperBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                startPrivateWhisper(participant.sid, participant.identity);
+            });
+        }
 
         // Bind Fullscreen Button
         const fsBtn = tile.querySelector('.tile-fullscreen-btn');
@@ -451,6 +467,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         updateParticipantCount();
         updateGridLayout();
+        updateChatRecipients();
     }
 
     /**
@@ -465,6 +482,7 @@ document.addEventListener('DOMContentLoaded', () => {
             activeParticipants.delete(participant.sid);
             updateParticipantCount();
             updateGridLayout();
+            updateChatRecipients();
         }
     }
 
@@ -605,6 +623,13 @@ document.addEventListener('DOMContentLoaded', () => {
         // Reset control bar buttons
         updateMicButtonUI(false);
         updateCamButtonUI(false);
+
+        // Reset Chat Recipient Selection
+        if (elements.chatRecipientSelect) {
+            elements.chatRecipientSelect.innerHTML = '<option value="everyone">🌐 Everyone (Public)</option>';
+            updateChatInputPlaceholder();
+        }
+        elements.unreadBadge.classList.remove('badge-whisper');
 
         updateGridLayout();
     }
@@ -785,13 +810,83 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isChatOpen) {
             unreadCount = 0;
             elements.unreadBadge.classList.add('hidden');
+            elements.unreadBadge.classList.remove('badge-whisper');
             elements.unreadBadge.textContent = '0';
+            updateChatRecipients();
             elements.chatInput.focus();
         }
     }
 
     /**
-     * Handle Sending Chat Message
+     * Update recipient dropdown with current remote participants
+     */
+    function updateChatRecipients() {
+        if (!elements.chatRecipientSelect) return;
+        const currentVal = elements.chatRecipientSelect.value;
+        
+        elements.chatRecipientSelect.innerHTML = '<option value="everyone">🌐 Everyone (Public)</option>';
+
+        if (roomManager && roomManager.room && roomManager.room.participants) {
+            roomManager.room.participants.forEach((participant) => {
+                const opt = document.createElement('option');
+                opt.value = participant.sid;
+                opt.textContent = `🔒 ${participant.identity} (Private)`;
+                opt.setAttribute('data-name', participant.identity);
+                elements.chatRecipientSelect.appendChild(opt);
+            });
+        }
+
+        // Keep selection if participant is still in room, else default to 'everyone'
+        const matching = elements.chatRecipientSelect.querySelector(`option[value="${currentVal}"]`);
+        if (matching) {
+            elements.chatRecipientSelect.value = currentVal;
+        } else {
+            elements.chatRecipientSelect.value = 'everyone';
+        }
+
+        updateChatInputPlaceholder();
+    }
+
+    /**
+     * Update chat input placeholder and styling based on selected recipient
+     */
+    function updateChatInputPlaceholder() {
+        if (!elements.chatRecipientSelect || !elements.chatInput) return;
+        const val = elements.chatRecipientSelect.value;
+
+        if (val === 'everyone') {
+            elements.chatRecipientSelect.classList.remove('whisper-active');
+            if (elements.chatForm) elements.chatForm.classList.remove('whisper-mode');
+            elements.chatInput.placeholder = 'Type a message to Everyone...';
+        } else {
+            elements.chatRecipientSelect.classList.add('whisper-active');
+            if (elements.chatForm) elements.chatForm.classList.add('whisper-mode');
+            const selectedOpt = elements.chatRecipientSelect.options[elements.chatRecipientSelect.selectedIndex];
+            const targetName = selectedOpt ? (selectedOpt.getAttribute('data-name') || selectedOpt.textContent.replace(/^🔒\s*/, '').replace(/\s*\(Private\)$/, '')) : 'User';
+            elements.chatInput.placeholder = `🔒 Whisper privately to ${targetName}...`;
+        }
+    }
+
+    /**
+     * Start a 1-on-1 private whisper session with a specific participant
+     */
+    function startPrivateWhisper(participantSid, participantName) {
+        if (!isChatOpen) {
+            toggleChatDrawer();
+        }
+        updateChatRecipients();
+        if (elements.chatRecipientSelect) {
+            elements.chatRecipientSelect.value = participantSid;
+            updateChatInputPlaceholder();
+        }
+        if (elements.chatInput) {
+            elements.chatInput.focus();
+        }
+        showToast(`🔒 Whisper mode enabled with ${participantName}`, 'info', 2500);
+    }
+
+    /**
+     * Handle Sending Chat Message (Supports both public broadcast and private whispers)
      */
     function handleSendChatMessage(e) {
         e.preventDefault();
@@ -799,27 +894,58 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!text || !roomManager) return;
 
         const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const recipientSid = elements.chatRecipientSelect ? elements.chatRecipientSelect.value : 'everyone';
 
-        // Broadcast via WebRTC DataTrack
-        roomManager.sendDataMessage({
-            type: 'chat',
-            text: text,
-            sender: currentUsername,
-            time: timeStr
-        });
+        if (recipientSid && recipientSid !== 'everyone') {
+            const selectedOpt = elements.chatRecipientSelect.options[elements.chatRecipientSelect.selectedIndex];
+            const targetName = selectedOpt ? (selectedOpt.getAttribute('data-name') || selectedOpt.textContent.replace(/^🔒\s*/, '').replace(/\s*\(Private\)$/, '')) : 'User';
 
-        // Append to local chat UI
-        appendChatMessage(text, currentUsername, timeStr, true);
+            // Send private whisper payload via WebRTC DataTrack
+            roomManager.sendDataMessage({
+                type: 'whisper',
+                text: text,
+                sender: currentUsername,
+                time: timeStr,
+                targetSid: recipientSid,
+                targetName: targetName
+            });
+
+            // Append to local chat UI with whisper styling
+            appendChatMessage(text, currentUsername, timeStr, true, true, targetName);
+        } else {
+            // Broadcast public chat via WebRTC DataTrack
+            roomManager.sendDataMessage({
+                type: 'chat',
+                text: text,
+                sender: currentUsername,
+                time: timeStr
+            });
+
+            // Append to local chat UI
+            appendChatMessage(text, currentUsername, timeStr, true, false);
+        }
+
         elements.chatInput.value = '';
     }
 
     /**
      * Append message bubble to chat container
      */
-    function appendChatMessage(text, sender, time, isSelf = false) {
+    function appendChatMessage(text, sender, time, isSelf = false, isWhisper = false, whisperTargetName = '') {
         const msgBubble = document.createElement('div');
-        msgBubble.className = `chat-msg-bubble ${isSelf ? 'chat-msg-self' : ''}`;
+        msgBubble.className = `chat-msg-bubble ${isSelf ? 'chat-msg-self' : ''} ${isWhisper ? 'chat-msg-whisper' : ''}`;
+        
+        let whisperTagHtml = '';
+        if (isWhisper) {
+            if (isSelf) {
+                whisperTagHtml = `<div class="chat-whisper-tag"><i class="fa-solid fa-lock"></i> Whisper to ${escapeHtml(whisperTargetName || 'User')}</div>`;
+            } else {
+                whisperTagHtml = `<div class="chat-whisper-tag"><i class="fa-solid fa-lock"></i> Whisper from ${escapeHtml(sender)}</div>`;
+            }
+        }
+
         msgBubble.innerHTML = `
+            ${whisperTagHtml}
             <span class="chat-msg-sender">${escapeHtml(sender)}</span>
             <span>${escapeHtml(text)}</span>
             <span class="chat-msg-time">${time}</span>
@@ -912,7 +1038,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const mySid = roomManager && roomManager.room && roomManager.room.localParticipant ? roomManager.room.localParticipant.sid : null;
 
         if (payload.type === 'chat') {
-            appendChatMessage(payload.text, senderName, payload.time || 'Now', false);
+            appendChatMessage(payload.text, senderName, payload.time || 'Now', false, false);
 
             if (!isChatOpen) {
                 unreadCount++;
@@ -920,6 +1046,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 elements.unreadBadge.classList.remove('hidden');
                 showToast(`💬 New message from ${senderName}`, 'info', 3000);
             }
+        } else if (payload.type === 'whisper') {
+            // Only process whisper if this client is the designated target
+            if (mySid && payload.targetSid === mySid) {
+                appendChatMessage(payload.text, senderName, payload.time || 'Now', false, true);
+
+                if (!isChatOpen) {
+                    unreadCount++;
+                    elements.unreadBadge.textContent = unreadCount > 9 ? '9+' : unreadCount;
+                    elements.unreadBadge.classList.add('badge-whisper');
+                    elements.unreadBadge.classList.remove('hidden');
+                    showToast(`🔒 Private whisper from ${senderName}: ${payload.text.substring(0, 35)}...`, 'info', 4500);
+                } else {
+                    showToast(`🔒 Private whisper from ${senderName}`, 'info', 2500);
+                }
+            }
+            // If targetSid !== mySid, silently drop (privacy guarantee)
         } else if (payload.type === 'reaction') {
             const remoteTile = (participant && participant.sid) ? document.getElementById(`tile-${participant.sid}`) : null;
             const targetTile = remoteTile || elements.localParticipantTile;

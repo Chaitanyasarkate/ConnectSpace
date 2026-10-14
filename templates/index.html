@@ -19,7 +19,7 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📹</text></svg>">
 
     <!-- Application Custom CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=3.2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=3.3">
 </head>
 <body>
     <div class="app-background"></div>
@@ -246,15 +246,21 @@
                         <i class="fa-solid fa-xmark"></i>
                     </button>
                 </div>
+                <div class="chat-recipient-bar">
+                    <label for="chat-recipient-select" class="chat-recipient-label"><i class="fa-solid fa-lock"></i> Send to:</label>
+                    <select id="chat-recipient-select" class="chat-recipient-select" title="Choose Message Recipient">
+                        <option value="everyone">🌐 Everyone (Public)</option>
+                    </select>
+                </div>
                 <div id="chat-messages" class="chat-messages-container">
                     <div class="chat-welcome-notice">
                         <i class="fa-solid fa-shield-halved"></i>
-                        <p>Messages are end-to-end transmitted via WebRTC data channel.</p>
+                        <p>Messages are transmitted via WebRTC data channel. Select a participant above or click the 🔒 icon on their tile to whisper privately.</p>
                     </div>
                 </div>
                 <form id="chat-form" class="chat-input-form">
-                    <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off" required maxlength="500">
-                    <button type="submit" id="send-msg-btn" class="btn btn-primary btn-sm">
+                    <input type="text" id="chat-input" placeholder="Type a message to Everyone..." autocomplete="off" required maxlength="500">
+                    <button type="submit" id="send-msg-btn" class="btn btn-primary btn-sm" title="Send Message">
                         <i class="fa-solid fa-paper-plane"></i>
                     </button>
                 </form>
@@ -274,7 +280,7 @@
     <script src="https://cdn.jsdelivr.net/npm/twilio-video@2.28.1/dist/twilio-video.min.js"></script>
 
     <!-- Application JavaScript -->
-    <script src="{{ url_for('static', filename='js/twilio-room.js') }}?v=3.2"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=3.2"></script>
+    <script src="{{ url_for('static', filename='js/twilio-room.js') }}?v=3.3"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=3.3"></script>
 </body>
 </html>
