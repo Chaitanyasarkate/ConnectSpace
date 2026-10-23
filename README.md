@@ -13,7 +13,7 @@
     A futuristic, high-performance real-time video conferencing application powered by <b>Python 3.12</b>, <b>Flask REST API</b>, <b>Twilio WebRTC Video SDK</b>, and a sleek <b>Dark Glassmorphism Vanilla JavaScript</b> interface.
   </p>
 
-  [🌐 Try Live Demo]((https://flask-twilio-video-rose.vercel.app/)) • [✨ Features](#-key-features) • [🚀 Quick Start](#-quick-start-guide) • [🔌 API Docs](#-api-endpoints) • [☁️ Deployment](#-render-cloud-deployment)
+  [🌐 Try Live Demo](#-https://flask-twilio-video-rose.vercel.app/) • [✨ Features](#-key-features) • [🚀 Quick Start](#-quick-start-guide) • [🔌 API Docs](#-api-endpoints) • [☁️ Deployment](#-render-cloud-deployment)
 
 </div>
 
@@ -22,7 +22,8 @@
 ## 🌐 Live Production Application
 
 > [!IMPORTANT]
-> **Live App URL**: (https://flask-twilio-video-rose.vercel.app/) 
+> **Live App URL**:https://flask-twilio-video-rose.vercel.app/
+
 > Open the URL on your mobile phone, tablet, or secondary browser window to test instant WebRTC video calls, screen sharing, live chat, and AI subtitles!
 
 ---
