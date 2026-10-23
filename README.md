@@ -22,7 +22,7 @@
 ## 🌐 Live Production Application
 
 > [!IMPORTANT]
-> **Live App URL**: [https://flask-twilio-video-rose.vercel.app/]https://flask-twilio-video-rose.vercel.app/)  
+> **Live App URL**: (https://flask-twilio-video-rose.vercel.app/) 
 > Open the URL on your mobile phone, tablet, or secondary browser window to test instant WebRTC video calls, screen sharing, live chat, and AI subtitles!
 
 ---
